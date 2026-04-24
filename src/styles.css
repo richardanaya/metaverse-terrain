@@ -1,0 +1,243 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #0c1118;
+  color: #eef5ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  min-width: 320px;
+}
+
+#app {
+  position: relative;
+  display: grid;
+  background:
+    radial-gradient(circle at 72% 20%, rgba(109, 161, 255, 0.2), transparent 32rem),
+    linear-gradient(140deg, #081018 0%, #111827 42%, #172033 100%);
+}
+
+#scene {
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+}
+
+.panel {
+  position: absolute;
+  z-index: 5;
+  top: 1rem;
+  left: 1rem;
+  width: min(23rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 1.2rem;
+  background: rgba(8, 13, 22, 0.78);
+  box-shadow: 0 1.4rem 3rem rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(18px);
+}
+
+.title-block h1,
+.title-block p {
+  margin: 0;
+}
+
+.title-block h1 {
+  font-size: clamp(1.45rem, 4vw, 2.1rem);
+  line-height: 1.02;
+  letter-spacing: -0.06em;
+}
+
+.title-block p:not(.eyebrow) {
+  margin-top: 0.55rem;
+  color: #b9c6d8;
+  line-height: 1.45;
+}
+
+.eyebrow {
+  margin-bottom: 0.45rem;
+  color: #8bd5ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.control-group {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.control-group label,
+.heightmap-card label {
+  color: #dce8f8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.control-group label span {
+  float: right;
+  color: #8bd5ff;
+  font-weight: 800;
+}
+
+.segmented,
+.two-up {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.segmented {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.two-up {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+button {
+  appearance: none;
+  min-height: 2.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef5ff;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139, 213, 255, 0.7);
+  background: rgba(139, 213, 255, 0.14);
+}
+
+button.active {
+  border-color: rgba(80, 220, 140, 0.7);
+  background: linear-gradient(135deg, rgba(80, 220, 140, 0.32), rgba(139, 213, 255, 0.18));
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #8bd5ff;
+}
+
+.heightmap-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5rem;
+  gap: 0.8rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.heightmap-card p {
+  margin: 0.35rem 0 0;
+  color: #b9c6d8;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+#heightmap-preview {
+  width: 5rem;
+  height: 5rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.65rem;
+  image-rendering: pixelated;
+}
+
+.texture-key {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 1rem;
+  color: #cbd7e8;
+  font-size: 0.72rem;
+}
+
+.texture-key div {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: center;
+}
+
+.swatch {
+  width: 100%;
+  height: 2.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.65rem;
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.sand {
+  background-color: #c8aa68;
+  background-image: url('/textures/terrain-sand.png');
+}
+
+.grass {
+  background-color: #3f8e46;
+  background-image: url('/textures/terrain-grass.png');
+}
+
+.rock {
+  background-color: #6c6f67;
+  background-image: url('/textures/terrain-rock.png');
+}
+
+.snow {
+  background-color: #dce8ed;
+  background-image: url('/textures/terrain-snow.png');
+}
+
+.help {
+  margin: 1rem 0 0;
+  color: #aebbd0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .panel {
+    top: auto;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    width: calc(100vw - 1.5rem);
+    max-height: 52vh;
+    border-radius: 1rem;
+  }
+
+  .texture-key {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

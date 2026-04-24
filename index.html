@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terrain Heightmap Editor</title>
+  </head>
+  <body>
+    <main id="app">
+      <section class="panel" aria-label="Terrain editor controls">
+        <div class="title-block">
+          <p class="eyebrow">ThreeJS terrain lab</p>
+          <h1>256m Region Terrain</h1>
+          <p>
+            A 256m terrain heightfield with four blended terrain maps and
+            live raise/lower brush editing.
+          </p>
+        </div>
+
+        <div class="control-group">
+          <label>Brush Mode</label>
+          <div class="segmented" role="group" aria-label="Brush mode">
+            <button class="active" type="button" data-mode="raise">Raise</button>
+            <button type="button" data-mode="lower">Lower</button>
+            <button type="button" data-mode="flatten">Flatten</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label for="brush-size">Brush Size <span id="brush-size-value">8m</span></label>
+          <input id="brush-size" type="range" min="2" max="32" step="1" value="8" />
+        </div>
+
+        <div class="control-group">
+          <label for="brush-strength">Brush Strength <span id="brush-strength-value">12</span></label>
+          <input id="brush-strength" type="range" min="1" max="36" step="1" value="12" />
+        </div>
+
+        <div class="control-group">
+          <label for="water-level">Water Level <span id="water-level-value">2.5m</span></label>
+          <input id="water-level" type="range" min="-8" max="28" step="0.5" value="2.5" />
+        </div>
+
+        <div class="control-group">
+          <label for="texture-density">Texture Density <span id="texture-density-value">42x</span></label>
+          <input id="texture-density" type="range" min="8" max="96" step="1" value="42" />
+        </div>
+
+        <div class="control-group two-up">
+          <button id="randomize" type="button">Randomize Terrain</button>
+          <button id="level" type="button">Level Plot</button>
+        </div>
+
+        <div class="control-group">
+          <button id="export-heightmap" type="button">Download Heightmap PNG</button>
+        </div>
+
+        <div class="heightmap-card">
+          <div>
+            <label>Heightmap Source</label>
+            <p id="height-stats">256 x 256 samples</p>
+          </div>
+          <canvas id="heightmap-preview" width="256" height="256" aria-label="Heightmap preview"></canvas>
+        </div>
+
+        <div class="texture-key" aria-label="Terrain texture key">
+          <div><span class="swatch sand"></span>Sand</div>
+          <div><span class="swatch grass"></span>Grass</div>
+          <div><span class="swatch rock"></span>Rock</div>
+          <div><span class="swatch snow"></span>Snow</div>
+        </div>
+
+        <p class="help">
+          Left-drag paints terrain. W/S walks, A/D turns, Q/E moves down/up.
+          Flatten uses the height where you first click. Right-drag orbits,
+          wheel zooms, middle-drag pans. Press 1/2/3 to switch modes.
+        </p>
+      </section>
+
+      <canvas id="scene" aria-label="ThreeJS terrain scene"></canvas>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
