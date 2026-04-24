@@ -7,7 +7,7 @@ const SAMPLES = 256;
 const HALF_REGION = REGION_SIZE / 2;
 const MIN_HEIGHT = -12;
 const MAX_HEIGHT = 52;
-const DEFAULT_WATER_LEVEL = 2.5;
+const DEFAULT_WATER_LEVEL = 28;
 
 const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');

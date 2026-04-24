@@ -20,6 +20,8 @@ npm install
 npm run dev
 ```
 
+Open `/` for the terrain editor.
+
 ## Controls
 
 - Left-drag: paint terrain.
