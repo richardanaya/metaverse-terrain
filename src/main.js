@@ -268,17 +268,172 @@ function loadTerrainTexture(path) {
 }
 
 function createWaterPlane() {
-  const geometry = new THREE.PlaneGeometry(REGION_SIZE, REGION_SIZE, 1, 1);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x4b9bd0,
-    transparent: true,
-    opacity: 0.36,
-    depthWrite: false,
-  });
+  const geometry = createWaterGeometry();
+  const material = createWaterMaterial();
   const water = new THREE.Mesh(geometry, material);
-  water.rotation.x = -Math.PI / 2;
   water.position.y = waterLevel;
+  water.renderOrder = 4;
   return water;
+}
+
+function createWaterGeometry() {
+  const geometry = new THREE.BufferGeometry();
+  const vertexCount = SAMPLES * SAMPLES;
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const waterDepth = new Float32Array(vertexCount);
+  const indices = new Uint32Array((SAMPLES - 1) * (SAMPLES - 1) * 6);
+  const step = REGION_SIZE / (SAMPLES - 1);
+
+  for (let z = 0; z < SAMPLES; z += 1) {
+    for (let x = 0; x < SAMPLES; x += 1) {
+      const index = indexFor(x, z);
+      const positionIndex = index * 3;
+      const uvIndex = index * 2;
+
+      positions[positionIndex] = x * step - HALF_REGION;
+      positions[positionIndex + 1] = 0;
+      positions[positionIndex + 2] = z * step - HALF_REGION;
+      uvs[uvIndex] = x / (SAMPLES - 1);
+      uvs[uvIndex + 1] = z / (SAMPLES - 1);
+      waterDepth[index] = waterLevel - heightMap[index];
+    }
+  }
+
+  let indexPointer = 0;
+  for (let z = 0; z < SAMPLES - 1; z += 1) {
+    for (let x = 0; x < SAMPLES - 1; x += 1) {
+      const a = indexFor(x, z);
+      const b = indexFor(x + 1, z);
+      const c = indexFor(x, z + 1);
+      const d = indexFor(x + 1, z + 1);
+
+      indices[indexPointer] = a;
+      indices[indexPointer + 1] = c;
+      indices[indexPointer + 2] = b;
+      indices[indexPointer + 3] = b;
+      indices[indexPointer + 4] = c;
+      indices[indexPointer + 5] = d;
+      indexPointer += 6;
+    }
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geometry.setAttribute('waterDepth', new THREE.BufferAttribute(waterDepth, 1));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function createWaterMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uWaterMap: { value: loadTerrainTexture('/textures/terrain-water.png') },
+      uTime: { value: 0 },
+      uSunDirection: { value: sunDirection },
+      uShallowColor: { value: new THREE.Color(0x63c6d6) },
+      uDeepColor: { value: new THREE.Color(0x0c4a66) },
+      uFoamColor: { value: new THREE.Color(0xe8fbff) },
+      uFogColor: { value: new THREE.Color(0x9fb7d5) },
+    },
+    vertexShader: `
+      attribute float waterDepth;
+
+      uniform float uTime;
+
+      varying vec2 vUv;
+      varying float vTerrainDepth;
+      varying vec3 vWaveNormal;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vUv = uv;
+        vTerrainDepth = waterDepth;
+
+        float waveMask = smoothstep(0.12, 3.0, waterDepth);
+        float phaseA = position.x * 0.18 + position.z * 0.07 + uTime * 0.82;
+        float phaseB = position.x * 0.11 - position.z * 0.16 + uTime * 1.28;
+        float phaseC = -position.x * 0.06 + position.z * 0.20 + uTime * 0.54;
+        float waveHeight = sin(phaseA) * 0.13 + sin(phaseB) * 0.08 + sin(phaseC) * 0.05;
+
+        float dx = cos(phaseA) * 0.18 * 0.13 + cos(phaseB) * 0.11 * 0.08 - cos(phaseC) * 0.06 * 0.05;
+        float dz = cos(phaseA) * 0.07 * 0.13 - cos(phaseB) * 0.16 * 0.08 + cos(phaseC) * 0.20 * 0.05;
+
+        vec3 transformed = position;
+        transformed.y += waveHeight * waveMask;
+        vWaveNormal = normalize(vec3(-dx * waveMask, 1.0, -dz * waveMask));
+
+        vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uWaterMap;
+      uniform float uTime;
+      uniform vec3 uSunDirection;
+      uniform vec3 uShallowColor;
+      uniform vec3 uDeepColor;
+      uniform vec3 uFoamColor;
+      uniform vec3 uFogColor;
+
+      varying vec2 vUv;
+      varying float vTerrainDepth;
+      varying vec3 vWaveNormal;
+      varying vec3 vWorldPosition;
+
+      float getWaterLuma(vec3 color) {
+        return dot(color, vec3(0.299, 0.587, 0.114));
+      }
+
+      void main() {
+        vec2 waterUvA = vec2(vUv.x * 12.6 + uTime * 0.010, vUv.y * 7.1 - uTime * 0.006);
+        vec2 waterUvB = vec2(vUv.x * -6.2 - uTime * 0.004, vUv.y * 3.5 + uTime * 0.008);
+        vec3 waterSampleA = texture2D(uWaterMap, waterUvA).rgb;
+        vec3 waterSampleB = texture2D(uWaterMap, waterUvB).rgb;
+        vec3 waterSample = mix(waterSampleA, waterSampleB, 0.35);
+        float waterDetail = getWaterLuma(waterSample);
+        float waterDetailX = getWaterLuma(texture2D(uWaterMap, waterUvA + vec2(0.003, 0.0)).rgb);
+        float waterDetailY = getWaterLuma(texture2D(uWaterMap, waterUvA + vec2(0.0, 0.003)).rgb);
+        vec3 normal = normalize(vWaveNormal + vec3((waterDetail - waterDetailX) * 1.35, 0.0, (waterDetail - waterDetailY) * 1.35));
+        vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+        float depth = clamp(vTerrainDepth, 0.0, 18.0);
+        float depthMix = smoothstep(0.0, 13.0, depth);
+        float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
+
+        float rippleA = sin((vUv.x * 118.0 + vUv.y * 63.0) + uTime * 1.7);
+        float rippleB = sin((vUv.x * -77.0 + vUv.y * 142.0) + uTime * 1.15);
+        float ripple = (rippleA + rippleB) * 0.5;
+
+        vec3 color = mix(uShallowColor, uDeepColor, depthMix);
+        color = mix(color, waterSample, mix(0.18, 0.10, depthMix));
+        color += ripple * 0.035;
+        color = mix(color, vec3(0.72, 0.88, 0.96), fresnel * 0.24);
+
+        vec3 reflectedSun = reflect(-normalize(uSunDirection), normal);
+        float specular = pow(max(dot(reflectedSun, viewDirection), 0.0), 92.0);
+        color += vec3(1.0, 0.93, 0.74) * specular * 0.45;
+
+        float shore = 1.0 - smoothstep(0.0, 2.4, vTerrainDepth);
+        float foamNoise = sin(vUv.x * 210.0 + uTime * 1.4) * sin(vUv.y * 185.0 - uTime * 1.1);
+        float textureFoam = smoothstep(0.74, 0.98, waterDetail) * smoothstep(0.5, 3.8, vTerrainDepth);
+        float foam = shore * smoothstep(0.18, 0.78, foamNoise + ripple * 0.42) * 0.68 + textureFoam * 0.07;
+        color = mix(color, uFoamColor, foam * 0.32);
+
+        float distanceToCamera = length(cameraPosition - vWorldPosition);
+        float fogAmount = smoothstep(260.0, 520.0, distanceToCamera) * 0.42;
+        color = mix(color, uFogColor, fogAmount);
+
+        float visibility = smoothstep(-0.1, 0.35, vTerrainDepth);
+        float alpha = mix(0.34, 0.58, depthMix) + fresnel * 0.2 + shore * 0.16;
+        gl_FragColor = vec4(color, clamp(alpha * visibility, 0.0, 0.78));
+      }
+    `,
+  });
 }
 
 function createBoundaryFrame() {
@@ -290,7 +445,7 @@ function createBoundaryFrame() {
     new THREE.Vector3(-HALF_REGION, 0, -HALF_REGION),
   ];
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color: 0xd6ecff, transparent: true, opacity: 0.56 });
+  const material = new THREE.LineBasicMaterial({ color: 0xd6ecff, transparent: true, opacity: 0.24 });
   const frame = new THREE.Line(geometry, material);
   frame.position.y = waterLevel + 0.08;
   return frame;
@@ -387,6 +542,7 @@ function setWaterLevel(level) {
 
   if (waterMesh) {
     waterMesh.position.y = waterLevel;
+    updateWaterDepthData();
   }
 
   if (boundaryFrame) {
@@ -525,6 +681,18 @@ function syncHeightMapToGeometry() {
   terrainMesh.geometry.computeVertexNormals();
   terrainMesh.geometry.attributes.normal.needsUpdate = true;
   terrainMesh.geometry.computeBoundingSphere();
+  updateWaterDepthData();
+}
+
+function updateWaterDepthData() {
+  const depthAttribute = waterMesh?.geometry?.attributes?.waterDepth;
+  if (!depthAttribute) return;
+
+  for (let index = 0; index < heightMap.length; index += 1) {
+    depthAttribute.array[index] = waterLevel - heightMap[index];
+  }
+
+  depthAttribute.needsUpdate = true;
 }
 
 function updateBrushCursor(point, mode = brush.mode) {
@@ -596,6 +764,10 @@ function resize() {
 
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
+  if (waterMesh?.material?.uniforms?.uTime) {
+    waterMesh.material.uniforms.uTime.value = clock.elapsedTime;
+  }
+
   updateAvatarMovement(delta);
   controls.update();
   renderer.render(scene, camera);
