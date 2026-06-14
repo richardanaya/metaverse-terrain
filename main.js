@@ -5,20 +5,26 @@ import { TerrainRegion, bindTerrainPainting, bindTextureDrop } from 'metaverse-t
 const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');
 const heightmapPreview = document.querySelector('#heightmap-preview');
+const regionSizeInput = document.querySelector('#region-size');
 const brushSizeInput = document.querySelector('#brush-size');
 const brushStrengthInput = document.querySelector('#brush-strength');
 const waterEnabledInput = document.querySelector('#water-enabled');
 const waterLevelInput = document.querySelector('#water-level');
 const textureDensityInput = document.querySelector('#texture-density');
+const hexTileRateInput = document.querySelector('#hex-tile-rate');
+const hexTileContrastInput = document.querySelector('#hex-tile-contrast');
 const sandMaxInput = document.querySelector('#sand-max');
 const grassStartInput = document.querySelector('#grass-start');
 const grassEndInput = document.querySelector('#grass-end');
 const rockStartInput = document.querySelector('#rock-start');
 const snowStartInput = document.querySelector('#snow-start');
+const regionSizeValue = document.querySelector('#region-size-value');
 const brushSizeValue = document.querySelector('#brush-size-value');
 const brushStrengthValue = document.querySelector('#brush-strength-value');
 const waterLevelValue = document.querySelector('#water-level-value');
 const textureDensityValue = document.querySelector('#texture-density-value');
+const hexTileRateValue = document.querySelector('#hex-tile-rate-value');
+const hexTileContrastValue = document.querySelector('#hex-tile-contrast-value');
 const sandMaxValue = document.querySelector('#sand-max-value');
 const grassStartValue = document.querySelector('#grass-start-value');
 const grassEndValue = document.querySelector('#grass-end-value');
@@ -71,6 +77,7 @@ const cameraOffset = new THREE.Vector3();
 
 const terrain = new TerrainRegion({
   seed: 29,
+  regionSize: Number(regionSizeInput.value),
   textureDensity: Number(textureDensityInput.value),
   onHeightmapChange: refreshHeightmapPreview,
 });
@@ -94,6 +101,11 @@ renderer.setAnimationLoop(animate);
 
 function bindPanel() {
   window.addEventListener('resize', resize);
+
+  bindRange(regionSizeInput, regionSizeValue, (value) => {
+    terrain.setRegionSize(value);
+    return `${terrain.regionSize}m`;
+  });
 
   bindRange(brushSizeInput, brushSizeValue, (value) => {
     terrain.setBrushRadius(value);
@@ -120,6 +132,16 @@ function bindPanel() {
   bindRange(textureDensityInput, textureDensityValue, (value) => {
     terrain.setTextureDensity(value);
     return `${terrain.textureDensity}x`;
+  });
+
+  bindRange(hexTileRateInput, hexTileRateValue, (value) => {
+    terrain.setHexTileRate(value);
+    return `${terrain.hexTileRate.toFixed(2)}x`;
+  });
+
+  bindRange(hexTileContrastInput, hexTileContrastValue, (value) => {
+    terrain.setHexTileContrast(value);
+    return terrain.hexTileContrast.toFixed(2);
   });
 
   bindRange(sandMaxInput, sandMaxValue, (value) => {

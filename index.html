@@ -20,11 +20,11 @@
       <section class="panel" aria-label="Terrain editor controls">
         <div class="title-block">
           <p class="eyebrow">metaverse-terrain</p>
-          <h1>256m Region Terrain</h1>
-          <p>
-            A 256m terrain heightfield with four blended terrain maps and
-            live raise/lower brush editing.
-          </p>
+        </div>
+
+        <div class="control-group">
+          <label for="region-size">Region Size <span id="region-size-value">256m</span></label>
+          <input id="region-size" type="range" min="64" max="512" step="8" value="256" />
         </div>
 
         <div class="control-group">
@@ -58,6 +58,14 @@
         <div class="control-group">
           <label for="texture-density">Texture Density <span id="texture-density-value">42x</span></label>
           <input id="texture-density" type="range" min="8" max="96" step="1" value="42" />
+        </div>
+
+        <div class="control-group">
+          <label for="hex-tile-rate">Hex Tile Rate <span id="hex-tile-rate-value">1.0x</span></label>
+          <input id="hex-tile-rate" type="range" min="0.25" max="8" step="0.05" value="1" />
+
+          <label class="sub-label" for="hex-tile-contrast">Hex Contrast <span id="hex-tile-contrast-value">0.75</span></label>
+          <input id="hex-tile-contrast" type="range" min="0.5" max="0.95" step="0.01" value="0.75" />
         </div>
 
         <div class="control-group">

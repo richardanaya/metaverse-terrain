@@ -15,11 +15,15 @@ import * as THREE from 'three';
 // --- constants ---
 
 export const DEFAULT_REGION_SIZE = 256;
+export const MIN_REGION_SIZE = 64;
+export const MAX_REGION_SIZE = 512;
 export const DEFAULT_SAMPLES = 256;
 export const DEFAULT_MIN_HEIGHT = -12;
 export const DEFAULT_MAX_HEIGHT = 52;
 export const DEFAULT_WATER_LEVEL = 28;
 export const DEFAULT_TEXTURE_DENSITY = 42;
+export const DEFAULT_HEX_TILE_RATE = 1;
+export const DEFAULT_HEX_TILE_CONTRAST = 0.75;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
 
 export const DEFAULT_TEXTURE_URLS = {
@@ -467,6 +471,10 @@ const terrainVertexShader = `
 `;
 
 const terrainFragmentShader = `
+  #ifdef GL_OES_standard_derivatives
+    #extension GL_OES_standard_derivatives : enable
+  #endif
+
   uniform sampler2D uSand;
   uniform sampler2D uGrass;
   uniform sampler2D uRock;
@@ -474,6 +482,8 @@ const terrainFragmentShader = `
   uniform float uMinHeight;
   uniform float uMaxHeight;
   uniform float uTextureScale;
+  uniform float uHexTileRate;
+  uniform float uHexContrastR;
   uniform vec3 uSunDirection;
   uniform float uWaterLevel;
   uniform float uWaterEnabled;
@@ -488,6 +498,113 @@ const terrainFragmentShader = `
   varying float vHeight;
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
+
+  const float HEX_FALL_OFF_CONTRAST = 0.6;
+  const float HEX_BLEND_EXP_MIN = 2.0;
+  const float HEX_BLEND_EXP_MAX = 12.0;
+  const float HEX_ROT_STRENGTH = 1.0;
+  const vec3 HEX_LUMA_WEIGHTS = vec3(0.299, 0.587, 0.114);
+
+  struct HexTriangleGrid {
+    float w1;
+    float w2;
+    float w3;
+    ivec2 vertex1;
+    ivec2 vertex2;
+    ivec2 vertex3;
+  };
+
+  vec2 hexHash(vec2 p) {
+    vec2 r = mat2(127.1, 269.5, 311.7, 183.3) * p;
+    return fract(sin(r) * 43758.5453);
+  }
+
+  vec2 makeCenST(ivec2 vertex) {
+    mat2 invSkewMat = mat2(1.0, 0.0, 0.5, 1.0 / 1.15470054);
+    return invSkewMat * vec2(vertex) / (2.0 * sqrt(3.0));
+  }
+
+  mat2 loadRot2x2(ivec2 idx, float rotStrength) {
+    float angle = float(abs(idx.x * idx.y) + abs(idx.x + idx.y)) + 3.14159265;
+    angle = mod(angle, 6.2831853);
+    if (angle > 3.14159265) {
+      angle -= 6.2831853;
+    }
+    angle *= rotStrength;
+    float cs = cos(angle);
+    float si = sin(angle);
+    return mat2(cs, si, -si, cs);
+  }
+
+  vec3 gain3(vec3 x, float r) {
+    float k = log(1.0 - r) / log(0.5);
+    vec3 s = 2.0 * step(0.5, x);
+    vec3 m = 2.0 * (1.0 - s);
+    vec3 res = 0.5 * s + 0.25 * m * pow(max(vec3(0.0), s + x * m), vec3(k));
+    return res / (res.x + res.y + res.z);
+  }
+
+  HexTriangleGrid triangleGrid(vec2 st) {
+    st *= 2.0 * sqrt(3.0);
+    mat2 gridToSkewedGrid = mat2(1.0, 0.0, -0.57735027, 1.15470054);
+    vec2 skewedCoord = gridToSkewedGrid * st;
+    ivec2 baseId = ivec2(floor(skewedCoord));
+    vec3 temp = vec3(fract(skewedCoord), 0.0);
+    temp.z = 1.0 - temp.x - temp.y;
+
+    float s = step(0.0, -temp.z);
+    float s2 = 2.0 * s - 1.0;
+
+    HexTriangleGrid grid;
+    grid.w1 = -temp.z * s2;
+    grid.w2 = s - temp.y * s2;
+    grid.w3 = s - temp.x * s2;
+    grid.vertex1 = baseId + ivec2(int(s), int(s));
+    grid.vertex2 = baseId + ivec2(int(s), 1 - int(s));
+    grid.vertex3 = baseId + ivec2(1 - int(s), int(s));
+    return grid;
+  }
+
+  vec3 hexTileColor(sampler2D tex, vec2 st) {
+    st *= uHexTileRate;
+
+    HexTriangleGrid grid = triangleGrid(st);
+
+    mat2 rot1 = loadRot2x2(grid.vertex1, HEX_ROT_STRENGTH);
+    mat2 rot2 = loadRot2x2(grid.vertex2, HEX_ROT_STRENGTH);
+    mat2 rot3 = loadRot2x2(grid.vertex3, HEX_ROT_STRENGTH);
+
+    vec2 cen1 = makeCenST(grid.vertex1);
+    vec2 cen2 = makeCenST(grid.vertex2);
+    vec2 cen3 = makeCenST(grid.vertex3);
+
+    vec2 st1 = rot1 * (st - cen1) + cen1 + hexHash(vec2(grid.vertex1));
+    vec2 st2 = rot2 * (st - cen2) + cen2 + hexHash(vec2(grid.vertex2));
+    vec2 st3 = rot3 * (st - cen3) + cen3 + hexHash(vec2(grid.vertex3));
+
+    vec3 c1 = texture2D(tex, st1).rgb;
+    vec3 c2 = texture2D(tex, st2).rgb;
+    vec3 c3 = texture2D(tex, st3).rgb;
+
+    vec3 Dw = vec3(dot(c1, HEX_LUMA_WEIGHTS), dot(c2, HEX_LUMA_WEIGHTS), dot(c3, HEX_LUMA_WEIGHTS));
+    Dw = mix(vec3(1.0), Dw, HEX_FALL_OFF_CONTRAST);
+
+    vec3 bw = vec3(grid.w1, grid.w2, grid.w3);
+    float hexExponent = mix(
+      HEX_BLEND_EXP_MIN,
+      HEX_BLEND_EXP_MAX,
+      clamp((uHexContrastR - 0.5) / 0.45, 0.0, 1.0)
+    );
+
+    if (abs(uHexContrastR - 0.5) > 0.001) {
+      bw = gain3(bw, uHexContrastR);
+    }
+
+    vec3 W = Dw * pow(bw, vec3(hexExponent));
+    W /= W.x + W.y + W.z;
+
+    return W.x * c1 + W.y * c2 + W.z * c3;
+  }
 
   float remapHeight(float height) {
     return clamp((height - uMinHeight) / (uMaxHeight - uMinHeight), 0.0, 1.0);
@@ -511,10 +628,10 @@ const terrainFragmentShader = `
     vec4 weights = max(vec4(sandWeight, grassWeight, rockWeight, snowWeight), vec4(0.001));
     weights /= weights.x + weights.y + weights.z + weights.w;
 
-    vec3 sand = texture2D(uSand, tiledUv * 1.15).rgb;
-    vec3 grass = texture2D(uGrass, tiledUv).rgb;
-    vec3 rock = texture2D(uRock, tiledUv * 0.82).rgb;
-    vec3 snow = texture2D(uSnow, tiledUv * 0.66).rgb;
+    vec3 sand = hexTileColor(uSand, tiledUv * 1.15);
+    vec3 grass = hexTileColor(uGrass, tiledUv);
+    vec3 rock = hexTileColor(uRock, tiledUv * 0.82);
+    vec3 snow = hexTileColor(uSnow, tiledUv * 0.66);
     vec3 color = sand * weights.x + grass * weights.y + rock * weights.z + snow * weights.w;
 
     float diffuse = clamp(dot(normal, normalize(uSunDirection)), 0.0, 1.0);
@@ -536,6 +653,8 @@ function createTerrainMaterial(textureLoader, options) {
     minHeight,
     maxHeight,
     textureDensity,
+    hexTileRate,
+    hexTileContrast,
     sunDirection,
     waterLevel,
     waterEnabled = 1,
@@ -544,6 +663,7 @@ function createTerrainMaterial(textureLoader, options) {
   } = options;
 
   return new THREE.ShaderMaterial({
+    extensions: { derivatives: true },
     uniforms: {
       uSand: { value: loadTerrainTexture(textureLoader, textures.sand) },
       uGrass: { value: loadTerrainTexture(textureLoader, textures.grass) },
@@ -552,6 +672,8 @@ function createTerrainMaterial(textureLoader, options) {
       uMinHeight: { value: minHeight },
       uMaxHeight: { value: maxHeight },
       uTextureScale: { value: textureDensity },
+      uHexTileRate: { value: hexTileRate },
+      uHexContrastR: { value: hexTileContrast },
       uSunDirection: { value: sunDirection },
       uWaterLevel: { value: waterLevel },
       uWaterEnabled: { value: waterEnabled ? 1 : 0 },
@@ -711,6 +833,8 @@ const TEXTURE_LAYER_UNIFORMS = {
  * @property {number} [waterLevel]
  * @property {boolean} [waterEnabled]
  * @property {number} [textureDensity]
+ * @property {number} [hexTileRate]
+ * @property {number} [hexTileContrast]
  * @property {number} [seed]
  * @property {Float32Array} [heightMap]
  * @property {{ sand: string|THREE.Texture, grass: string|THREE.Texture, rock: string|THREE.Texture, snow: string|THREE.Texture, water: string|THREE.Texture }} [textures]
@@ -735,6 +859,8 @@ export class TerrainRegion {
     this.waterLevel = options.waterLevel ?? DEFAULT_WATER_LEVEL;
     this.waterEnabled = options.waterEnabled ?? true;
     this.textureDensity = options.textureDensity ?? DEFAULT_TEXTURE_DENSITY;
+    this.hexTileRate = options.hexTileRate ?? DEFAULT_HEX_TILE_RATE;
+    this.hexTileContrast = options.hexTileContrast ?? DEFAULT_HEX_TILE_CONTRAST;
     this.textureHeights = { ...DEFAULT_TEXTURE_HEIGHTS, ...options.textureHeights };
     this.textureBlendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
     this.textures = { ...DEFAULT_TEXTURE_URLS, ...options.textures };
@@ -794,6 +920,8 @@ export class TerrainRegion {
       minHeight: this.minHeight,
       maxHeight: this.maxHeight,
       textureDensity: this.textureDensity,
+      hexTileRate: this.hexTileRate,
+      hexTileContrast: this.hexTileContrast,
       sunDirection: this.sunDirection,
       waterLevel: this.waterLevel,
       waterEnabled: this.waterEnabled,
@@ -887,6 +1015,58 @@ export class TerrainRegion {
 
     if (this.terrainMesh.material.uniforms?.uTextureScale) {
       this.terrainMesh.material.uniforms.uTextureScale.value = density;
+    }
+
+    return this;
+  }
+
+  setRegionSize(size) {
+    this.regionSize = clamp(size, MIN_REGION_SIZE, MAX_REGION_SIZE);
+    this.rebuildTerrainGeometry();
+    return this;
+  }
+
+  rebuildTerrainGeometry() {
+    this.terrainMesh.geometry.dispose();
+    this.waterMesh.geometry.dispose();
+
+    this.terrainMesh.geometry = createTerrainGeometry(this.heightMap, {
+      regionSize: this.regionSize,
+      samples: this.samples,
+    });
+    this.waterMesh.geometry = createWaterGeometry(this.heightMap, {
+      regionSize: this.regionSize,
+      samples: this.samples,
+      waterLevel: this.waterLevel,
+    });
+
+    if (this.boundaryFrame) {
+      this.group.remove(this.boundaryFrame);
+      this.boundaryFrame.geometry.dispose();
+      this.boundaryFrame.material.dispose();
+      this.boundaryFrame = createBoundaryFrame(this.regionSize, this.waterLevel);
+      this.group.add(this.boundaryFrame);
+    }
+
+    this.sync();
+    return this;
+  }
+
+  setHexTileRate(rate) {
+    this.hexTileRate = rate;
+
+    if (this.terrainMesh.material.uniforms?.uHexTileRate) {
+      this.terrainMesh.material.uniforms.uHexTileRate.value = rate;
+    }
+
+    return this;
+  }
+
+  setHexTileContrast(contrast) {
+    this.hexTileContrast = clamp(contrast, 0.5, 0.99);
+
+    if (this.terrainMesh.material.uniforms?.uHexContrastR) {
+      this.terrainMesh.material.uniforms.uHexContrastR.value = this.hexTileContrast;
     }
 
     return this;
@@ -1007,7 +1187,7 @@ export class TerrainRegion {
     return heightmapToDataURL(this.heightMap);
   }
 
-  downloadHeightmap(filename = 'terrain-heightmap-256.png') {
+  downloadHeightmap(filename = `terrain-heightmap-${this.regionSize}.png`) {
     const link = document.createElement('a');
     link.download = filename;
     link.href = this.toHeightmapDataURL();
