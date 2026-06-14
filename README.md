@@ -1,35 +1,55 @@
-# Terrain Heightmap Editor
+# metaverse-terrain
 
-A small ThreeJS terrain editor for a 256m region heightfield:
+Single-file ES module library (`index.js`). `TerrainRegion` owns terrain logic in world space. Your app owns input, cameras, and raycasting.
 
-- 256m x 256m plot.
-- 256 x 256 heightmap stored as a `Float32Array`.
-- Four generated terrain maps: sand, grass, rock, and snow.
-- Four generated 1024 x 1024 terrain texture PNGs in `public/textures/`.
-- Shader blending by height, waterline, and slope.
-- Animated shader water with an image detail map, fresnel highlights, ripples, and shoreline foam.
-- Texture density slider for controlling terrain map repeat scale.
-- Raise/lower brush editing directly against the heightmap.
-- Flatten brush editing that levels terrain toward the height where the stroke begins.
-- Heightmap PNG preview/export.
+## Core integration
+
+```js
+import * as THREE from 'three';
+import { TerrainRegion } from 'metaverse-terrain';
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+const region = new TerrainRegion({ onHeightmapChange: refreshPreview });
+scene.add(region.group);
+
+// App: pointer → ray → terrain hit
+function getHit(event) {
+  const rect = domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  return region.raycast(raycaster);
+}
+
+// Library: world point → brush
+region.paintAt(hit.point, { temporaryLower: event.shiftKey });
+```
+
+## Optional helpers
+
+```js
+import { getTerrainHitFromPointer, bindTerrainPainting } from 'metaverse-terrain';
+
+const hit = getTerrainHitFromPointer(region, domElement, camera, raycaster, pointer, x, y);
+
+const painting = bindTerrainPainting(region, { domElement, camera, raycaster, pointer });
+```
+
+`bindTerrainPainting` is demo sugar — not required for custom UX.
+
+## TerrainRegion API
+
+- `raycast(raycaster)` — intersect terrain mesh
+- `paintAt(worldPoint)` — apply brush, emit `onHeightmapChange`
+- `setBrushMode()`, `setWaterLevel()`, `setTextureHeights()`, …
+- `drawHeightmapPreview(canvas)`, `downloadHeightmap()`
 
 ## Run
 
 ```bash
-npm install
-npm run dev
+python3 -m http.server 8080
 ```
 
-Open `/` for the terrain editor.
-
-## Controls
-
-- Left-drag: paint terrain.
-- Shift + left-drag: temporarily lower terrain.
-- Right-drag: orbit camera.
-- Mouse wheel: zoom.
-- Middle-drag: pan.
-- `1`: raise mode.
-- `2`: lower mode.
-- `3`: flatten mode.
-- `[` and `]`: adjust brush size.
+Open [http://localhost:8080/](http://localhost:8080/)

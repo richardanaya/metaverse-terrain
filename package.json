@@ -1,17 +1,21 @@
 {
-  "name": "terrain-heightmap-editor",
+  "name": "metaverse-terrain",
   "version": "1.0.0",
-  "private": true,
+  "description": "ES module Three.js terrain heightfield with shader blending, animated water, and brush editing",
   "type": "module",
-  "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+  "sideEffects": false,
+  "exports": {
+    ".": "./index.js"
   },
-  "dependencies": {
-    "three": "^0.176.0"
+  "peerDependencies": {
+    "three": ">=0.160.0"
   },
-  "devDependencies": {
-    "vite": "^6.3.2"
-  }
+  "keywords": [
+    "threejs",
+    "terrain",
+    "heightmap",
+    "metaverse",
+    "webgl"
+  ],
+  "license": "MIT"
 }

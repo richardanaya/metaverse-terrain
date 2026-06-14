@@ -3,13 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Terrain Heightmap Editor</title>
+    <title>Metaverse Terrain Editor</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three/examples/jsm/",
+          "metaverse-terrain": "./index.js"
+        }
+      }
+    </script>
   </head>
   <body>
     <main id="app">
       <section class="panel" aria-label="Terrain editor controls">
         <div class="title-block">
-          <p class="eyebrow">ThreeJS terrain lab</p>
+          <p class="eyebrow">metaverse-terrain</p>
           <h1>256m Region Terrain</h1>
           <p>
             A 256m terrain heightfield with four blended terrain maps and
@@ -36,7 +46,11 @@
           <input id="brush-strength" type="range" min="1" max="36" step="1" value="12" />
         </div>
 
-        <div class="control-group">
+        <div class="control-group water-controls">
+          <label class="toggle-label" for="water-enabled">
+            <input id="water-enabled" type="checkbox" checked />
+            <span>Water</span>
+          </label>
           <label for="water-level">Water Level <span id="water-level-value">28.0m</span></label>
           <input id="water-level" type="range" min="0" max="52" step="0.5" value="28" />
         </div>
@@ -44,6 +58,24 @@
         <div class="control-group">
           <label for="texture-density">Texture Density <span id="texture-density-value">42x</span></label>
           <input id="texture-density" type="range" min="8" max="96" step="1" value="42" />
+        </div>
+
+        <div class="control-group">
+          <label>Texture Heights</label>
+          <label class="sub-label" for="sand-max">Sand fades above <span id="sand-max-value">6.5m</span></label>
+          <input id="sand-max" type="range" min="-12" max="52" step="0.5" value="6.5" />
+
+          <label class="sub-label" for="grass-start">Grass starts <span id="grass-start-value">-2.0m</span></label>
+          <input id="grass-start" type="range" min="-12" max="52" step="0.5" value="-2" />
+
+          <label class="sub-label" for="grass-end">Grass fades above <span id="grass-end-value">35.0m</span></label>
+          <input id="grass-end" type="range" min="-12" max="52" step="0.5" value="35" />
+
+          <label class="sub-label" for="rock-start">Rock starts <span id="rock-start-value">16.0m</span></label>
+          <input id="rock-start" type="range" min="-12" max="52" step="0.5" value="16" />
+
+          <label class="sub-label" for="snow-start">Snow starts <span id="snow-start-value">34.0m</span></label>
+          <input id="snow-start" type="range" min="-12" max="52" step="0.5" value="34" />
         </div>
 
         <div class="control-group two-up">
@@ -64,11 +96,24 @@
         </div>
 
         <div class="texture-key" aria-label="Terrain texture key">
-          <div><span class="swatch sand"></span>Sand</div>
-          <div><span class="swatch grass"></span>Grass</div>
-          <div><span class="swatch rock"></span>Rock</div>
-          <div><span class="swatch snow"></span>Snow</div>
+          <div class="texture-drop" data-texture-drop="sand">
+            <span class="swatch sand"></span>
+            <span>Sand</span>
+          </div>
+          <div class="texture-drop" data-texture-drop="grass">
+            <span class="swatch grass"></span>
+            <span>Grass</span>
+          </div>
+          <div class="texture-drop" data-texture-drop="rock">
+            <span class="swatch rock"></span>
+            <span>Rock</span>
+          </div>
+          <div class="texture-drop" data-texture-drop="snow">
+            <span class="swatch snow"></span>
+            <span>Snow</span>
+          </div>
         </div>
+        <p class="texture-hint">Drop PNG or JPG images onto a swatch to replace that terrain texture.</p>
 
         <p class="help">
           Left-drag paints terrain. W/S walks, A/D turns, Q/E moves down/up.
@@ -79,6 +124,6 @@
 
       <canvas id="scene" aria-label="ThreeJS terrain scene"></canvas>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

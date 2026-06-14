@@ -96,6 +96,15 @@ body {
   text-transform: uppercase;
 }
 
+.control-group .sub-label {
+  margin-top: 0.15rem;
+  color: #b9c6d8;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
 .control-group label span {
   float: right;
   color: #8bd5ff;
@@ -148,6 +157,32 @@ input[type="range"] {
   accent-color: #8bd5ff;
 }
 
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #8bd5ff;
+}
+
+.water-controls.is-disabled label[for="water-level"],
+.water-controls.is-disabled #water-level-value {
+  opacity: 0.45;
+}
+
+.water-controls.is-disabled input[type="range"] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .heightmap-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 5rem;
@@ -184,10 +219,27 @@ input[type="range"] {
   font-size: 0.72rem;
 }
 
-.texture-key div {
+.texture-drop {
   display: grid;
   gap: 0.25rem;
   justify-items: center;
+  cursor: copy;
+}
+
+.texture-drop.is-dragover .swatch {
+  border-color: rgba(139, 213, 255, 0.95);
+  box-shadow:
+    0 0 0 2px rgba(139, 213, 255, 0.35),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  transform: scale(1.03);
+}
+
+.texture-hint {
+  margin: 0.55rem 0 0;
+  color: #9eb0c7;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .swatch {
@@ -198,26 +250,30 @@ input[type="range"] {
   background-position: center;
   background-size: cover;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .sand {
   background-color: #c8aa68;
-  background-image: url('/textures/terrain-sand.png');
+  background-image: url('./terrain-sand.png');
 }
 
 .grass {
   background-color: #3f8e46;
-  background-image: url('/textures/terrain-grass.png');
+  background-image: url('./terrain-grass.png');
 }
 
 .rock {
   background-color: #6c6f67;
-  background-image: url('/textures/terrain-rock.png');
+  background-image: url('./terrain-rock.png');
 }
 
 .snow {
   background-color: #dce8ed;
-  background-image: url('/textures/terrain-snow.png');
+  background-image: url('./terrain-snow.png');
 }
 
 .help {
