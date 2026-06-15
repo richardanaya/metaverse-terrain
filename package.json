@@ -1,21 +1,46 @@
 {
   "name": "metaverse-terrain",
-  "version": "1.0.0",
-  "description": "ES module Three.js terrain heightfield with shader blending, animated water, and brush editing",
+  "version": "0.1.0",
+  "description": "ES module Three.js terrain heightfield with hex-tiled texture blending, animated water, and brush editing",
   "type": "module",
   "sideEffects": false,
-  "exports": {
-    ".": "./index.js"
+  "author": "Richard Anaya",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richardanaya/metaverse-terrain.git"
   },
+  "homepage": "https://github.com/richardanaya/metaverse-terrain#readme",
+  "bugs": {
+    "url": "https://github.com/richardanaya/metaverse-terrain/issues"
+  },
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./texture/*": "./texture/*"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "texture/",
+    "LICENSE",
+    "ASSET_LICENSES.md",
+    "README.md"
+  ],
   "peerDependencies": {
     "three": ">=0.160.0"
   },
   "keywords": [
+    "three",
     "threejs",
     "terrain",
     "heightmap",
     "metaverse",
-    "webgl"
-  ],
-  "license": "MIT"
+    "webgl",
+    "shader"
+  ]
 }

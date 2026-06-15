@@ -1,13 +1,14 @@
 /**
  * metaverse-terrain — TerrainRegion library
  *
- * Peer dependency: the host app must resolve the bare specifier `three`
- * so both this file and the consumer can use:
+ * Peer dependency: the host app must resolve the bare specifier `three`:
  *
+ *   npm install metaverse-terrain three
  *   import * as THREE from 'three';
  *
  * CDN import map example:
- *   "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js"
+ *   "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
+ *   "metaverse-terrain": "https://cdn.jsdelivr.net/npm/metaverse-terrain@0.1.0/index.js"
  */
 
 import * as THREE from 'three';
@@ -26,13 +27,7 @@ export const DEFAULT_HEX_TILE_RATE = 0.5;
 export const DEFAULT_HEX_TILE_CONTRAST = 0.75;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
 
-export const DEFAULT_TEXTURE_URLS = {
-  sand: './texture/terrain-sand.png',
-  grass: './texture/terrain-grass.png',
-  rock: './texture/terrain-rock.png',
-  snow: './texture/terrain-snow.png',
-  water: './texture/terrain-water.png',
-};
+export const TERRAIN_TEXTURE_LAYERS = ['sand', 'grass', 'rock', 'snow', 'water'];
 
 export const DEFAULT_TEXTURE_HEIGHTS = {
   sandMax: 10,
@@ -123,6 +118,20 @@ function createValueNoise(seed) {
 }
 
 // --- textures ---
+
+function requireTextures(textures) {
+  if (!textures) {
+    throw new Error('metaverse-terrain: `textures` is required (sand, grass, rock, snow, water)');
+  }
+
+  for (const layer of TERRAIN_TEXTURE_LAYERS) {
+    if (textures[layer] == null) {
+      throw new Error(`metaverse-terrain: textures.${layer} is required`);
+    }
+  }
+
+  return textures;
+}
 
 function configureTerrainTexture(texture) {
   texture.wrapS = THREE.RepeatWrapping;
@@ -837,7 +846,7 @@ const TEXTURE_LAYER_UNIFORMS = {
  * @property {number} [hexTileContrast]
  * @property {number} [seed]
  * @property {Float32Array} [heightMap]
- * @property {{ sand: string|THREE.Texture, grass: string|THREE.Texture, rock: string|THREE.Texture, snow: string|THREE.Texture, water: string|THREE.Texture }} [textures]
+ * @property {{ sand: string|THREE.Texture, grass: string|THREE.Texture, rock: string|THREE.Texture, snow: string|THREE.Texture, water: string|THREE.Texture }} textures
  * @property {[number, number, number]} [sunDirection]
  * @property {THREE.TextureLoader} [textureLoader]
  * @property {boolean} [addBoundaryFrame]
@@ -863,7 +872,7 @@ export class TerrainRegion {
     this.hexTileContrast = options.hexTileContrast ?? DEFAULT_HEX_TILE_CONTRAST;
     this.textureHeights = { ...DEFAULT_TEXTURE_HEIGHTS, ...options.textureHeights };
     this.textureBlendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
-    this.textures = { ...DEFAULT_TEXTURE_URLS, ...options.textures };
+    this.textures = requireTextures(options.textures);
     this.textureLoader = options.textureLoader ?? new THREE.TextureLoader();
     this.sunDirection = new THREE.Vector3(...(options.sunDirection ?? DEFAULT_SUN_DIRECTION)).normalize();
     this.onHeightmapChange = options.onHeightmapChange ?? null;
