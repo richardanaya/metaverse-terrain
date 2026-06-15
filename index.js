@@ -8,7 +8,7 @@
  *
  * CDN import map example:
  *   "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
- *   "metaverse-terrain": "https://cdn.jsdelivr.net/npm/metaverse-terrain@0.1.0/index.js"
+ *   "metaverse-terrain": "https://cdn.jsdelivr.net/npm/metaverse-terrain/index.js"
  */
 
 import * as THREE from 'three';
