@@ -52,4 +52,13 @@ const painting = bindTerrainPainting(region, { domElement, camera, raycaster, po
 python3 -m http.server 8080
 ```
 
-Open [http://localhost:8080/](http://localhost:8080/)
+- Editor: [http://localhost:8080/example/editor/](http://localhost:8080/example/editor/)
+- Minimal: [http://localhost:8080/example/simple/](http://localhost:8080/example/simple/)
+
+## References
+
+Terrain texture hex-tiling follows the color-path adaptation in:
+
+> Morten S. Mikkelsen, [*Practical Real-Time Hex-Tiling*](https://jcgt.org/published/0011/03/05/), Journal of Computer Graphics Techniques, Vol. 11, No. 2, 2022.
+
+Based on the by-example noise hex-tiling of Heitz and Neyret; see the [JCGT paper](https://jcgt.org/published/0011/03/05/) and [reference demo](https://github.com/mmikk/hextile-demo).

@@ -19,8 +19,8 @@
       }
     </style>
     <!--
-      Host this page with the library and terrain-*.png textures.
-      From npm, point metaverse-terrain at your copy or:
+      Serve the repo root (textures live in texture/). From npm, point
+      metaverse-terrain at your copy or:
       https://cdn.jsdelivr.net/npm/metaverse-terrain/index.js
     -->
     <script type="importmap">
@@ -28,13 +28,13 @@
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
           "three/addons/": "https://cdn.jsdelivr.net/npm/three/examples/jsm/",
-          "metaverse-terrain": "./index.js"
+          "metaverse-terrain": "../../index.js"
         }
       }
     </script>
   </head>
   <body>
     <canvas></canvas>
-    <script type="module" src="./simple.js"></script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

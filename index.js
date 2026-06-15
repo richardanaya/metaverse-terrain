@@ -21,25 +21,25 @@ export const DEFAULT_SAMPLES = 256;
 export const DEFAULT_MIN_HEIGHT = -12;
 export const DEFAULT_MAX_HEIGHT = 52;
 export const DEFAULT_WATER_LEVEL = 28;
-export const DEFAULT_TEXTURE_DENSITY = 42;
-export const DEFAULT_HEX_TILE_RATE = 1;
+export const DEFAULT_TEXTURE_DENSITY = 10;
+export const DEFAULT_HEX_TILE_RATE = 0.5;
 export const DEFAULT_HEX_TILE_CONTRAST = 0.75;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
 
 export const DEFAULT_TEXTURE_URLS = {
-  sand: './terrain-sand.png',
-  grass: './terrain-grass.png',
-  rock: './terrain-rock.png',
-  snow: './terrain-snow.png',
-  water: './terrain-water.png',
+  sand: './texture/terrain-sand.png',
+  grass: './texture/terrain-grass.png',
+  rock: './texture/terrain-rock.png',
+  snow: './texture/terrain-snow.png',
+  water: './texture/terrain-water.png',
 };
 
 export const DEFAULT_TEXTURE_HEIGHTS = {
-  sandMax: 6.5,
-  grassStart: -2,
-  grassEnd: 35,
-  rockStart: 16,
-  snowStart: 34,
+  sandMax: 10,
+  grassStart: -8,
+  grassEnd: 52,
+  rockStart: 46,
+  snowStart: 50,
 };
 
 export const DEFAULT_TEXTURE_BLEND_WIDTH = 4;

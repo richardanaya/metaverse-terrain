@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TerrainRegion, bindTerrainPainting, bindTextureDrop } from 'metaverse-terrain';
+import { TEXTURE_URLS } from '../shared/textures.js';
 
 const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');
@@ -41,7 +42,7 @@ const avatarControls = {
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fb7d5);
-scene.fog = new THREE.Fog(0x9fb7d5, 260, 520);
+scene.fog = new THREE.Fog(0xb8c4d8, 360, 720);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 900);
 camera.position.set(132, 108, 168);
@@ -79,6 +80,7 @@ const terrain = new TerrainRegion({
   seed: 29,
   regionSize: Number(regionSizeInput.value),
   textureDensity: Number(textureDensityInput.value),
+  textures: TEXTURE_URLS,
   onHeightmapChange: refreshHeightmapPreview,
 });
 scene.add(terrain.group);

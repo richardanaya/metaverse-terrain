@@ -258,22 +258,22 @@ input[type="range"] {
 
 .sand {
   background-color: #c8aa68;
-  background-image: url('./terrain-sand.png');
+  background-image: url('../../texture/terrain-sand.png');
 }
 
 .grass {
   background-color: #3f8e46;
-  background-image: url('./terrain-grass.png');
+  background-image: url('../../texture/terrain-grass.png');
 }
 
 .rock {
   background-color: #6c6f67;
-  background-image: url('./terrain-rock.png');
+  background-image: url('../../texture/terrain-rock.png');
 }
 
 .snow {
   background-color: #dce8ed;
-  background-image: url('./terrain-snow.png');
+  background-image: url('../../texture/terrain-snow.png');
 }
 
 .help {

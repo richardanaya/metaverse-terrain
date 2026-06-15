@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TerrainRegion } from 'metaverse-terrain';
+import { TEXTURE_URLS } from '../shared/textures.js';
 
 const canvas = document.querySelector('canvas');
 
@@ -12,13 +13,14 @@ camera.position.set(132, 108, 168);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const terrain = new TerrainRegion({ textures: TEXTURE_URLS });
+scene.add(terrain.group);
 
 const controls = new OrbitControls(camera, canvas);
 controls.target.set(0, 10, 0);
 controls.update();
-
-const terrain = new TerrainRegion();
-scene.add(terrain.group);
 
 const clock = new THREE.Clock();
 

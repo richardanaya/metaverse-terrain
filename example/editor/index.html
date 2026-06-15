@@ -10,7 +10,7 @@
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
           "three/addons/": "https://cdn.jsdelivr.net/npm/three/examples/jsm/",
-          "metaverse-terrain": "./index.js"
+          "metaverse-terrain": "../../index.js"
         }
       }
     </script>
@@ -56,13 +56,13 @@
         </div>
 
         <div class="control-group">
-          <label for="texture-density">Texture Density <span id="texture-density-value">42x</span></label>
-          <input id="texture-density" type="range" min="8" max="96" step="1" value="42" />
+          <label for="texture-density">Texture Density <span id="texture-density-value">10x</span></label>
+          <input id="texture-density" type="range" min="8" max="96" step="1" value="10" />
         </div>
 
         <div class="control-group">
-          <label for="hex-tile-rate">Hex Tile Rate <span id="hex-tile-rate-value">1.0x</span></label>
-          <input id="hex-tile-rate" type="range" min="0.25" max="8" step="0.05" value="1" />
+          <label for="hex-tile-rate">Hex Tile Rate <span id="hex-tile-rate-value">0.5x</span></label>
+          <input id="hex-tile-rate" type="range" min="0.25" max="8" step="0.05" value="0.5" />
 
           <label class="sub-label" for="hex-tile-contrast">Hex Contrast <span id="hex-tile-contrast-value">0.75</span></label>
           <input id="hex-tile-contrast" type="range" min="0.5" max="0.95" step="0.01" value="0.75" />
@@ -70,20 +70,20 @@
 
         <div class="control-group">
           <label>Texture Heights</label>
-          <label class="sub-label" for="sand-max">Sand fades above <span id="sand-max-value">6.5m</span></label>
-          <input id="sand-max" type="range" min="-12" max="52" step="0.5" value="6.5" />
+          <label class="sub-label" for="sand-max">Sand fades above <span id="sand-max-value">10.0m</span></label>
+          <input id="sand-max" type="range" min="-12" max="52" step="0.5" value="10" />
 
-          <label class="sub-label" for="grass-start">Grass starts <span id="grass-start-value">-2.0m</span></label>
-          <input id="grass-start" type="range" min="-12" max="52" step="0.5" value="-2" />
+          <label class="sub-label" for="grass-start">Grass starts <span id="grass-start-value">-8.0m</span></label>
+          <input id="grass-start" type="range" min="-12" max="52" step="0.5" value="-8" />
 
-          <label class="sub-label" for="grass-end">Grass fades above <span id="grass-end-value">35.0m</span></label>
-          <input id="grass-end" type="range" min="-12" max="52" step="0.5" value="35" />
+          <label class="sub-label" for="grass-end">Grass fades above <span id="grass-end-value">52.0m</span></label>
+          <input id="grass-end" type="range" min="-12" max="52" step="0.5" value="52" />
 
-          <label class="sub-label" for="rock-start">Rock starts <span id="rock-start-value">16.0m</span></label>
-          <input id="rock-start" type="range" min="-12" max="52" step="0.5" value="16" />
+          <label class="sub-label" for="rock-start">Rock starts <span id="rock-start-value">46.0m</span></label>
+          <input id="rock-start" type="range" min="-12" max="52" step="0.5" value="46" />
 
-          <label class="sub-label" for="snow-start">Snow starts <span id="snow-start-value">34.0m</span></label>
-          <input id="snow-start" type="range" min="-12" max="52" step="0.5" value="34" />
+          <label class="sub-label" for="snow-start">Snow starts <span id="snow-start-value">50.0m</span></label>
+          <input id="snow-start" type="range" min="-12" max="52" step="0.5" value="50" />
         </div>
 
         <div class="control-group two-up">
@@ -121,7 +121,8 @@
             <span>Snow</span>
           </div>
         </div>
-        <p class="texture-hint">Drop PNG or JPG images onto a swatch to replace that terrain texture.</p>
+
+        <p class="texture-hint">Drop PNG or JPG images onto a swatch to replace terrain textures.</p>
 
         <p class="help">
           Left-drag paints terrain. W/S walks, A/D turns, Q/E moves down/up.
