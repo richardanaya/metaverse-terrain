@@ -1,3 +1,6 @@
+<img width="2879" height="1594" alt="image" src="https://github.com/user-attachments/assets/b25e75f0-dd80-451d-a99a-644819dbfb71" />
+
+
 # metaverse-terrain
 
 Three.js terrain library with hex-tiled texture blending, animated water, and heightmap brush editing.
