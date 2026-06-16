@@ -1,6 +1,6 @@
 {
   "name": "metaverse-terrain",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ES module Three.js terrain heightfield with hex-tiled texture blending, animated water, and brush editing",
   "type": "module",
   "sideEffects": false,

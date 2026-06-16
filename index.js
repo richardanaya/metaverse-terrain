@@ -424,6 +424,13 @@ function applyBrush(heightMap, worldPoint, brush, options) {
 
 // --- helpers ---
 
+function makeMatteMaterial(material) {
+  if ('roughness' in material) material.roughness = 1.0;
+  if ('metalness' in material) material.metalness = 0.0;
+  material.needsUpdate = true;
+  return material;
+}
+
 function createBoundaryFrame(regionSize, waterLevel) {
   const halfRegion = regionSize / 2;
   const points = [
@@ -671,7 +678,7 @@ function createTerrainMaterial(textureLoader, options) {
     textureBlendWidth,
   } = options;
 
-  return new THREE.ShaderMaterial({
+  return makeMatteMaterial(new THREE.ShaderMaterial({
     extensions: { derivatives: true },
     uniforms: {
       uSand: { value: loadTerrainTexture(textureLoader, textures.sand) },
@@ -695,7 +702,7 @@ function createTerrainMaterial(textureLoader, options) {
     },
     vertexShader: terrainVertexShader,
     fragmentShader: terrainFragmentShader,
-  });
+  }));
 }
 
 // --- WaterMaterial ---
@@ -805,7 +812,7 @@ function createWaterMaterial(textureLoader, options) {
     foamColor = 0xe8fbff,
   } = options;
 
-  return new THREE.ShaderMaterial({
+  return makeMatteMaterial(new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -820,7 +827,7 @@ function createWaterMaterial(textureLoader, options) {
     },
     vertexShader: waterVertexShader,
     fragmentShader: waterFragmentShader,
-  });
+  }));
 }
 
 // --- TerrainRegion ---
