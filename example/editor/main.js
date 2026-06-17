@@ -11,6 +11,7 @@ const regionSizeInput = document.querySelector('#region-size');
 const brushSizeInput = document.querySelector('#brush-size');
 const brushStrengthInput = document.querySelector('#brush-strength');
 const waterEnabledInput = document.querySelector('#water-enabled');
+const refractionEnabledInput = document.querySelector('#refraction-enabled');
 const layerSlider = document.querySelector('#layer-slider');
 const layerGradient = layerSlider.querySelector('.layer-slider-gradient');
 const layerHandles = [...layerSlider.querySelectorAll('.layer-handle')];
@@ -30,6 +31,10 @@ const terrainAOIntensityValue = document.querySelector('#terrain-ao-intensity-va
 const grassStartValue = document.querySelector('#grass-start-value');
 const rockStartValue = document.querySelector('#rock-start-value');
 const snowStartValue = document.querySelector('#snow-start-value');
+const sunAzimuthInput = document.querySelector('#sun-azimuth');
+const sunElevationInput = document.querySelector('#sun-elevation');
+const sunAzimuthValue = document.querySelector('#sun-azimuth-value');
+const sunElevationValue = document.querySelector('#sun-elevation-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
@@ -90,14 +95,15 @@ const movementForward = new THREE.Vector3();
 const movementDelta = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3();
 
-let terrain, painting;
+let terrain, painting, sunLight;
 
 async function init() {
   // Load and pack PBR textures while the HDRI environment initializes.
-  const [pbrTextures] = await Promise.all([
+  const [pbrTextures, envResult] = await Promise.all([
     loadPBRTextureSet(PBR_TEXTURE_URLS),
     environmentReady,
   ]);
+  sunLight = envResult.sunLight;
   
   terrain = new TerrainRegion({
     seed: 29,
@@ -109,6 +115,7 @@ async function init() {
     textures: TEXTURE_URLS,
     pbrTextures,
     normalStrength: 1.0,
+    environment: envResult.envMap,
     onHeightmapChange: refreshHeightmapPreview,
   });
   scene.add(terrain.group);
@@ -155,6 +162,10 @@ function bindPanel() {
     syncWaterControls();
   });
 
+  refractionEnabledInput.addEventListener('change', () => {
+    terrain.setRefractionEnabled(refractionEnabledInput.checked);
+  });
+
   bindLayerSlider();
   syncLayerSlider();
   syncWaterControls();
@@ -178,6 +189,18 @@ function bindPanel() {
     terrain.setTerrainAOIntensity(value);
     return `${Math.round(value * 100)}%`;
   });
+
+  bindRange(sunAzimuthInput, sunAzimuthValue, (value) => {
+    updateSunPosition(value, Number(sunElevationInput.value));
+    return `${value}°`;
+  });
+
+  bindRange(sunElevationInput, sunElevationValue, (value) => {
+    updateSunPosition(Number(sunAzimuthInput.value), value);
+    return `${value}°`;
+  });
+
+  updateSunPosition(Number(sunAzimuthInput.value), Number(sunElevationInput.value));
 
   modeButtons.forEach((button) => {
     button.addEventListener('click', () => setBrushMode(button.dataset.mode));
@@ -215,6 +238,24 @@ function syncWaterControls() {
   const enabled = terrain.waterEnabled;
   waterEnabledInput.closest('.water-controls')?.classList.toggle('is-disabled', !enabled);
   layerSlider.classList.toggle('water-disabled', !enabled);
+  refractionEnabledInput.disabled = !enabled;
+}
+
+function updateSunPosition(azimuthDeg, elevationDeg) {
+  const az = THREE.MathUtils.degToRad(azimuthDeg);
+  const el = THREE.MathUtils.degToRad(elevationDeg);
+  const cosEl = Math.cos(el);
+  const direction = new THREE.Vector3(
+    cosEl * Math.cos(az),
+    Math.sin(el),
+    cosEl * Math.sin(az),
+  );
+
+  if (sunLight) {
+    sunLight.position.copy(direction).multiplyScalar(200);
+  }
+
+  terrain.setSunDirection(direction);
 }
 
 function getTextureHeightsFromLayerSlider() {

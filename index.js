@@ -928,28 +928,76 @@ const waterVertexShader = `
   attribute float waterDepth;
 
   uniform float uTime;
+  uniform vec2 uWindDirection;
 
   varying vec2 vUv;
   varying float vTerrainDepth;
   varying vec3 vWaveNormal;
   varying vec3 vWorldPosition;
+  varying float vWaveJacobian;
+
+  const float PI = 3.14159265359;
+
+  vec2 rotateDir(vec2 dir, float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+    return vec2(c * dir.x - s * dir.y, s * dir.x + c * dir.y);
+  }
+
+  // Gerstner wave parameters: 5 waves with decreasing amplitude,
+  // increasing frequency, and angular spread around the wind direction.
+  const float A1 = 0.16, A2 = 0.10, A3 = 0.07, A4 = 0.04, A5 = 0.025;
+  const float W1 = 0.45, W2 = 0.72, W3 = 1.05, W4 = 1.48, W5 = 2.10;
+  const float Q1 = 0.85, Q2 = 0.80, Q3 = 0.70, Q4 = 0.55, Q5 = 0.40;
+  const float OFF1 = 0.0, OFF2 = 0.31, OFF3 = -0.44, OFF4 = 0.73, OFF5 = -0.26;
 
   void main() {
     vUv = uv;
     vTerrainDepth = waterDepth;
 
     float waveMask = smoothstep(0.12, 3.0, waterDepth);
-    float phaseA = position.x * 0.18 + position.z * 0.07 + uTime * 0.82;
-    float phaseB = position.x * 0.11 - position.z * 0.16 + uTime * 1.28;
-    float phaseC = -position.x * 0.06 + position.z * 0.20 + uTime * 0.54;
-    float waveHeight = sin(phaseA) * 0.13 + sin(phaseB) * 0.08 + sin(phaseC) * 0.05;
+    vec2 pos = position.xz;
+    vec2 windDir = normalize(uWindDirection);
 
-    float dx = cos(phaseA) * 0.18 * 0.13 + cos(phaseB) * 0.11 * 0.08 - cos(phaseC) * 0.06 * 0.05;
-    float dz = cos(phaseA) * 0.07 * 0.13 - cos(phaseB) * 0.16 * 0.08 + cos(phaseC) * 0.20 * 0.05;
+    vec2 D1 = rotateDir(windDir, OFF1);
+    vec2 D2 = rotateDir(windDir, OFF2);
+    vec2 D3 = rotateDir(windDir, OFF3);
+    vec2 D4 = rotateDir(windDir, OFF4);
+    vec2 D5 = rotateDir(windDir, OFF5);
+
+    float p1 = W1 * dot(D1, pos) + sqrt(9.8 * W1) * uTime * 0.5;
+    float p2 = W2 * dot(D2, pos) + sqrt(9.8 * W2) * uTime * 0.5;
+    float p3 = W3 * dot(D3, pos) + sqrt(9.8 * W3) * uTime * 0.5;
+    float p4 = W4 * dot(D4, pos) + sqrt(9.8 * W4) * uTime * 0.5;
+    float p5 = W5 * dot(D5, pos) + sqrt(9.8 * W5) * uTime * 0.5;
+
+    float c1 = cos(p1), c2 = cos(p2), c3 = cos(p3), c4 = cos(p4), c5 = cos(p5);
+    float s1 = sin(p1), s2 = sin(p2), s3 = sin(p3), s4 = sin(p4), s5 = sin(p5);
 
     vec3 transformed = position;
+    float waveHeight = A1*s1 + A2*s2 + A3*s3 + A4*s4 + A5*s5;
+    transformed.x += (Q1*A1*D1.x*c1 + Q2*A2*D2.x*c2 + Q3*A3*D3.x*c3 + Q4*A4*D4.x*c4 + Q5*A5*D5.x*c5) * waveMask;
+    transformed.z += (Q1*A1*D1.y*c1 + Q2*A2*D2.y*c2 + Q3*A3*D3.y*c3 + Q4*A4*D4.y*c4 + Q5*A5*D5.y*c5) * waveMask;
     transformed.y += waveHeight * waveMask;
-    vWaveNormal = normalize(vec3(-dx * waveMask, 1.0, -dz * waveMask));
+
+    float WA1 = A1*W1, WA2 = A2*W2, WA3 = A3*W3, WA4 = A4*W4, WA5 = A5*W5;
+
+    vec3 B = vec3(
+      1.0 - (Q1*A1*D1.x*D1.x*W1*s1 + Q2*A2*D2.x*D2.x*W2*s2 + Q3*A3*D3.x*D3.x*W3*s3 + Q4*A4*D4.x*D4.x*W4*s4 + Q5*A5*D5.x*D5.x*W5*s5) * waveMask,
+      (WA1*D1.x*c1 + WA2*D2.x*c2 + WA3*D3.x*c3 + WA4*D4.x*c4 + WA5*D5.x*c5) * waveMask,
+      -(Q1*A1*D1.x*D1.y*W1*s1 + Q2*A2*D2.x*D2.y*W2*s2 + Q3*A3*D3.x*D3.y*W3*s3 + Q4*A4*D4.x*D4.y*W4*s4 + Q5*A5*D5.x*D5.y*W5*s5) * waveMask
+    );
+    vec3 T = vec3(
+      -(Q1*A1*D1.x*D1.y*W1*s1 + Q2*A2*D2.x*D2.y*W2*s2 + Q3*A3*D3.x*D3.y*W3*s3 + Q4*A4*D4.x*D4.y*W4*s4 + Q5*A5*D5.x*D5.y*W5*s5) * waveMask,
+      (WA1*D1.y*c1 + WA2*D2.y*c2 + WA3*D3.y*c3 + WA4*D4.y*c4 + WA5*D5.y*c5) * waveMask,
+      1.0 - (Q1*A1*D1.y*D1.y*W1*s1 + Q2*A2*D2.y*D2.y*W2*s2 + Q3*A3*D3.y*D3.y*W3*s3 + Q4*A4*D4.y*D4.y*W4*s4 + Q5*A5*D5.y*D5.y*W5*s5) * waveMask
+    );
+
+    // cross(T, B) — not cross(B, T) — so the normal faces +y (up).
+    // With B along +x and T along +z, cross(B, T) points down and inverts
+    // fresnel/specular/env reflection, producing bright splotches.
+    vWaveNormal = normalize(cross(T, B));
+    vWaveJacobian = B.x * T.z - B.z * T.x;
 
     vec4 worldPosition = modelMatrix * vec4(transformed, 1.0);
     vWorldPosition = worldPosition.xyz;
@@ -968,6 +1016,7 @@ const waterFragmentShader = `
   uniform float uWaterAlphaShallow;
   uniform float uWaterAlphaDeep;
   uniform float uWaterAlphaMax;
+  uniform float uWaterLevel;
 
   // PBR water uniforms
   uniform sampler2D uWaterNormal;
@@ -975,10 +1024,29 @@ const waterFragmentShader = `
   uniform float uPBREnabled;
   uniform float uWaterIOR;
 
+  // IBL reflection (equirectangular HDR sampled directly; PMREM CubeUV layout
+  // is incompatible with samplerCube, so we use sampler2D + equirect UVs).
+  uniform sampler2D uEnvironment;
+  uniform float uEnvEnabled;
+
+  // Refraction seabed
+  uniform sampler2D uSandMap;
+  uniform sampler2D uGrassMap;
+  uniform sampler2D uRockMap;
+  uniform sampler2D uSnowMap;
+  uniform float uSandMax;
+  uniform float uGrassStart;
+  uniform float uGrassEnd;
+  uniform float uRockStart;
+  uniform float uSnowStart;
+  uniform float uSeabedUVScale;
+  uniform float uRefractionEnabled;
+
   varying vec2 vUv;
   varying float vTerrainDepth;
   varying vec3 vWaveNormal;
   varying vec3 vWorldPosition;
+  varying float vWaveJacobian;
 
   const float PI = 3.14159265359;
 
@@ -1048,6 +1116,7 @@ const waterFragmentShader = `
     return smoothstep(-0.08, 0.22, sunDir.y);
   }
 
+  // Analytic sky fallback when no IBL environment is bound.
   vec3 waterSkyReflection(vec3 reflectedView, vec3 sunDir) {
     float skyMix = smoothstep(-0.15, 0.75, reflectedView.y);
     float dayMix = waterDaylight(sunDir);
@@ -1061,6 +1130,82 @@ const waterFragmentShader = `
     float twilight = (1.0 - dayMix) * smoothstep(-0.05, 0.12, sunDir.y);
     sky = mix(sky, mix(twilightLow, twilightHigh, skyMix), twilight * 0.55);
     return sky;
+  }
+
+  // Convert a direction to equirectangular UVs.
+  vec2 directionToEquirectUV(vec3 dir) {
+    float u = atan(dir.z, dir.x) * 0.15915494309; // / (2*PI)
+    float v = asin(clamp(dir.y, -1.0, 1.0)) * 0.31830988618; // / PI
+    return vec2(u + 0.5, v + 0.5);
+  }
+
+  // Sample the equirect HDR environment. Roughness is approximated by blending
+  // a few rotated samples — no shader_texture_lod extension required.
+  vec3 sampleEnvReflection(vec3 reflectedView, float roughness, vec3 sunDir) {
+    if (uEnvEnabled > 0.5) {
+      vec2 uv = directionToEquirectUV(reflectedView);
+      if (roughness < 0.1) {
+        return texture2D(uEnvironment, uv).rgb;
+      }
+      // Cheap roughness blur: 3 rotated taps within a radius scaled by roughness.
+      float r = roughness * 0.04;
+      vec2 aUv = directionToEquirectUV(reflectedView + vec3(r, 0.0, 0.0));
+      vec2 bUv = directionToEquirectUV(reflectedView + vec3(0.0, 0.0, r));
+      vec3 base = texture2D(uEnvironment, uv).rgb;
+      vec3 a = texture2D(uEnvironment, aUv).rgb;
+      vec3 b = texture2D(uEnvironment, bUv).rgb;
+      return (base + a + b) / 3.0;
+    }
+    return waterSkyReflection(reflectedView, sunDir);
+  }
+
+  // Henyey-Greenstein phase function for forward-scattered SSS.
+  float henyeyGreenstein(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+  }
+
+  // Simplified height-based terrain blend for refraction seabed (no hex-tiling).
+  vec3 sampleSeabed(vec2 worldXZ, float terrainHeight) {
+    vec2 sUV = worldXZ * uSeabedUVScale;
+    float sw = 1.0 - smoothstep(uSandMax - 4.0, uSandMax, terrainHeight);
+    float gw = smoothstep(uGrassStart - 4.0, uGrassStart + 4.0, terrainHeight)
+      * (1.0 - smoothstep(uGrassEnd - 4.0, uGrassEnd + 4.0, terrainHeight));
+    float rw = smoothstep(uRockStart - 4.0, uRockStart + 4.0, terrainHeight);
+    float nw = smoothstep(uSnowStart - 4.0, uSnowStart + 4.0, terrainHeight);
+    vec4 w = max(vec4(sw, gw, rw, nw), vec4(0.001));
+    w /= (w.x + w.y + w.z + w.w);
+    vec3 sandC = texture2D(uSandMap, sUV).rgb;
+    vec3 grassC = texture2D(uGrassMap, sUV).rgb;
+    vec3 rockC = texture2D(uRockMap, sUV).rgb;
+    vec3 snowC = texture2D(uSnowMap, sUV).rgb;
+    return sandC*w.x + grassC*w.y + rockC*w.z + snowC*w.w;
+  }
+
+  // Refract view ray to seabed plane and return color with Beer-Lambert absorption.
+  vec3 sampleRefractedSeabed(vec3 viewDir, vec3 normal, float terrainHeight) {
+    vec3 refractDir = refract(-viewDir, normal, 1.0 / uWaterIOR);
+    float dy = terrainHeight - vWorldPosition.y;
+    float marchDist = dy / max(abs(refractDir.y), 0.05);
+    vec2 seabedXZ = vWorldPosition.xz + refractDir.xz * marchDist;
+    vec3 seabedColor = sampleSeabed(seabedXZ, terrainHeight);
+    vec3 sigmaT = vec3(0.8, 0.35, 0.12);
+    vec3 transmittance = exp(-sigmaT * abs(marchDist) * 0.12);
+    seabedColor *= transmittance;
+    return mix(uDeepColor, seabedColor, exp(-abs(marchDist) * 0.08));
+  }
+
+  // Volumetric SSS: refracted light path through column with Beer-Lambert + HG phase.
+  vec3 subsurfaceScattering(vec3 viewDir, vec3 normal, vec3 sunDir, float NdotL, float depthMix) {
+    vec3 refractLight = refract(-sunDir, normal, 1.0 / uWaterIOR);
+    float waterColumn = max(vTerrainDepth, 0.0);
+    vec3 sigmaT = vec3(0.8, 0.35, 0.12);
+    vec3 lightTrans = exp(-sigmaT * waterColumn * 0.12);
+    vec3 viewTrans = exp(-sigmaT * waterColumn * 0.12);
+    float cosTheta = dot(refractLight, -viewDir);
+    float hg = henyeyGreenstein(cosTheta, 0.7);
+    float sss = hg * max(NdotL, 0.0) * (1.0 - depthMix * 0.3);
+    return vec3(0.0, 0.45, 0.55) * lightTrans * viewTrans * sss * 0.4;
   }
 
   void main() {
@@ -1119,46 +1264,48 @@ const waterFragmentShader = `
       float rippleFine = waterRippleSignal(waterWorldXZ * 1.73 + vec2(19.0, -31.0), uTime * 1.19);
       float rippleCrest = smoothstep(0.42, 1.0, ripple * 0.62 + rippleFine * 0.38);
 
-      // Layered sun glints: broad mirror response plus persistent sun-facing
-      // ripple sheen. The persistent term keeps water lively from most angles;
-      // the mirror terms still bloom when the camera/sun alignment is perfect.
-      vec3 reflectedSun = reflect(-L, normal);
-      float sunMirror = max(dot(reflectedSun, viewDirection), 0.0);
+      // Ripple-driven glints keep water lively from most angles. The
+      // multi-tier pow-N mirror fakes are gone — GGX + IBL handle the
+      // roughness distribution properly now.
       float glancingBoost = smoothstep(0.18, 0.82, 1.0 - NdotV);
       float sunFacing = smoothstep(-0.05, 0.65, NdotL);
-      float rippleGlint = 0.82 + ripple * 0.18;
       float glintScale = mix(0.03, 1.0, daylight);
       float persistentGlint = (0.075 + 0.18 * sunFacing) * (0.62 + 0.38 * rippleCrest) * (1.0 - depthMix * 0.18) * glintScale;
       float grazingGlint = glancingBoost * (0.07 + 0.15 * rippleCrest) * glintScale;
-      float broadSpec = pow(sunMirror, 3.6) * mix(0.28, 0.56, glancingBoost) * rippleGlint * daylight;
-      float midSpec = pow(sunMirror, 18.0) * mix(0.16, 0.32, glancingBoost) * daylight;
-      float tightSpec = pow(sunMirror, 110.0) * 0.44 * daylight;
 
-      // Cheap sky reflection approximation for the custom water shader. This fills
-      // the role scene.environment would normally play in a standard PBR material.
+      // IBL reflection replaces analytic sky when scene.environment is bound.
       vec3 reflectedView = reflect(-viewDirection, normal);
-      vec3 skyReflection = waterSkyReflection(reflectedView, sunDir);
+      vec3 skyReflection = sampleEnvReflection(reflectedView, roughness, sunDir);
       float glancingReflection = (0.11 + pow(1.0 - NdotV, 1.7) * 0.46 + fresnel * 0.58) * mix(0.45, 1.0, daylight);
 
       vec3 baseColor = mix(uShallowColor, uDeepColor, depthAbsorption);
+
+      // Refraction: blend refracted seabed into shallow water.
+      if (uRefractionEnabled > 0.5) {
+        float terrainHeight = uWaterLevel - vTerrainDepth;
+        vec3 seabedColor = sampleRefractedSeabed(viewDirection, normal, terrainHeight);
+        baseColor = mix(seabedColor, baseColor, depthAbsorption);
+      }
+
       baseColor = mix(baseColor, waterSample, mix(0.16, 0.055, depthAbsorption));
       baseColor *= mix(1.08, 0.64, depthAbsorption) * mix(0.52, 1.0, daylight);
       baseColor += ripple * mix(0.025, 0.010, depthAbsorption);
 
-      float sss = pow(max(dot(viewDirection, -L), 0.0), 4.0) * 0.15 * daylight;
-      vec3 subsurface = vec3(0.0, 0.4, 0.5) * sss * (1.0 - depthMix);
+      // Volumetric SSS with Beer-Lambert depth absorption.
+      vec3 subsurface = subsurfaceScattering(viewDirection, normal, L, NdotL, depthMix) * daylight;
 
       vec3 fresnelTint = mix(vec3(0.15, 0.22, 0.32), vec3(0.72, 0.88, 0.96), daylight);
       finalColor = baseColor * (1.0 - fresnel * 0.42);
       finalColor = mix(finalColor, skyReflection, clamp(glancingReflection, 0.0, 0.68));
-      finalColor += vec3(1.0, 0.95, 0.8) * (spec * NdotL * 0.38 * daylight + persistentGlint + grazingGlint + broadSpec + midSpec + tightSpec);
+      finalColor += vec3(1.0, 0.95, 0.8) * (spec * NdotL * 0.38 * daylight + persistentGlint + grazingGlint);
       finalColor += subsurface;
       finalColor = mix(finalColor, fresnelTint, fresnel * 0.14);
 
+      // Foam: Jacobian-driven breaking-wave foam + shore foam.
       float shore = 1.0 - smoothstep(0.0, 2.4, vTerrainDepth);
-      float foamNoise = sin(vUv.x * 210.0 + uTime * 1.4) * sin(vUv.y * 185.0 - uTime * 1.1);
+      float jacobianFoam = smoothstep(0.4, -0.2, vWaveJacobian);
       float textureFoam = smoothstep(0.74, 0.98, waterDetail) * smoothstep(0.5, 3.8, vTerrainDepth);
-      float foam = shore * smoothstep(0.18, 0.78, foamNoise + ripple * 0.42) * 0.68 + textureFoam * 0.07;
+      float foam = max(shore * smoothstep(0.18, 0.78, jacobianFoam + ripple * 0.42) * 0.68, jacobianFoam * 0.25) + textureFoam * 0.07;
       finalColor = mix(finalColor, uFoamColor, foam * 0.32);
 
       finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAlpha) + fresnel * 0.16 + shore * 0.08;
@@ -1176,12 +1323,20 @@ const waterFragmentShader = `
       float rippleCrest2 = smoothstep(0.42, 1.0, ripple2 * 0.62 + rippleFine2 * 0.38);
 
       vec3 color = mix(uShallowColor, uDeepColor, depthAbsorption2);
+
+      // Refraction in legacy mode too.
+      if (uRefractionEnabled > 0.5) {
+        float terrainHeight = uWaterLevel - vTerrainDepth;
+        vec3 seabedColor = sampleRefractedSeabed(viewDirection, baseNormal, terrainHeight);
+        color = mix(seabedColor, color, depthAbsorption2);
+      }
+
       color = mix(color, waterSample, mix(0.16, 0.055, depthAbsorption2));
       color *= mix(1.08, 0.64, depthAbsorption2);
       color += ripple2 * mix(0.035, 0.014, depthAbsorption2);
       color *= mix(0.52, 1.0, daylight);
       vec3 reflectedView2 = reflect(-viewDirection, baseNormal);
-      vec3 skyReflection2 = waterSkyReflection(reflectedView2, sunDir);
+      vec3 skyReflection2 = sampleEnvReflection(reflectedView2, 0.1, sunDir);
       float legacyGlance = (0.07 + fresnel2 * 0.42) * mix(0.45, 1.0, daylight);
       color = mix(color, skyReflection2, clamp(legacyGlance, 0.0, 0.58));
       vec3 fresnelTint2 = mix(vec3(0.15, 0.22, 0.32), vec3(0.72, 0.88, 0.96), daylight);
@@ -1200,10 +1355,14 @@ const waterFragmentShader = `
         + pow(sunMirror2, 3.6) * mix(0.24, 0.48, glancingBoost2) * daylight;
       color += vec3(1.0, 0.93, 0.74) * specular;
 
+      // Simplified SSS for legacy mode.
+      float sss2 = pow(max(dot(viewDirection, -sunDir), 0.0), 4.0) * 0.12 * daylight;
+      color += vec3(0.0, 0.4, 0.5) * sss2 * (1.0 - depthMix2);
+
       float shore2 = 1.0 - smoothstep(0.0, 2.4, vTerrainDepth);
-      float foamNoise2 = sin(vUv.x * 210.0 + uTime * 1.4) * sin(vUv.y * 185.0 - uTime * 1.1);
+      float jacobianFoam2 = smoothstep(0.4, -0.2, vWaveJacobian);
       float textureFoam2 = smoothstep(0.74, 0.98, waterDetail) * smoothstep(0.5, 3.8, vTerrainDepth);
-      float foam2 = shore2 * smoothstep(0.18, 0.78, foamNoise2 + ripple2 * 0.42) * 0.68 + textureFoam2 * 0.07;
+      float foam2 = max(shore2 * smoothstep(0.18, 0.78, jacobianFoam2 + ripple2 * 0.42) * 0.68, jacobianFoam2 * 0.25) + textureFoam2 * 0.07;
       color = mix(color, uFoamColor, foam2 * 0.32);
 
       finalColor = color;
@@ -1219,6 +1378,10 @@ const waterFragmentShader = `
     finalAlpha = clamp(finalAlpha * visibility, 0.0, uWaterAlphaMax);
 
     gl_FragColor = vec4(finalColor, finalAlpha);
+
+    // Tone map + encode to output color space (same pipeline as MeshStandardMaterial).
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -1234,6 +1397,13 @@ function createWaterMaterial(textureLoader, options) {
     deepAlpha = 0.94,
     maxAlpha = 0.97,
     pbrTextures,
+    waterLevel = DEFAULT_WATER_LEVEL,
+    terrainTextures = null,
+    textureHeights = DEFAULT_TEXTURE_HEIGHTS,
+    textureDensity = DEFAULT_TEXTURE_DENSITY,
+    windDirection = [1, 0.3],
+    environment = null,
+    refractionEnabled = true,
   } = options;
 
   const waterPBR = pbrTextures?.water;
@@ -1254,10 +1424,15 @@ function createWaterMaterial(textureLoader, options) {
   defaultMRAO.wrapS = THREE.RepeatWrapping; defaultMRAO.wrapT = THREE.RepeatWrapping;
   defaultMRAO.colorSpace = THREE.LinearSRGBColorSpace; defaultMRAO.needsUpdate = true;
 
-  return new THREE.ShaderMaterial({
+  // Placeholder textures for refraction seabed (1x1 neutral) — replaced with
+  // actual terrain albedo textures by TerrainRegion after both meshes exist.
+  const seabedPlaceholder = createSolidTerrainTexture(128, 128, 128, 255, false);
+
+  const material = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
+    toneMapped: true,
     uniforms: {
       uWaterMap: { value: loadTerrainTexture(textureLoader, textures.water) },
       uTime: { value: 0 },
@@ -1269,14 +1444,32 @@ function createWaterMaterial(textureLoader, options) {
       uWaterAlphaShallow: { value: shallowAlpha },
       uWaterAlphaDeep: { value: deepAlpha },
       uWaterAlphaMax: { value: maxAlpha },
+      uWaterLevel: { value: waterLevel },
       uWaterNormal: { value: waterPBR?.normal ? loadTerrainTexture(textureLoader, waterPBR.normal, false) : defaultNormal },
       uWaterMRAO: { value: waterPBR?.mrao ? loadTerrainTexture(textureLoader, waterPBR.mrao, false) : defaultMRAO },
       uPBREnabled: { value: hasPBR ? 1.0 : 0.0 },
       uWaterIOR: { value: 1.33 },
+      uEnvironment: { value: environment },
+      uEnvEnabled: { value: environment ? 1.0 : 0.0 },
+      uSandMap: { value: terrainTextures?.sand ?? seabedPlaceholder },
+      uGrassMap: { value: terrainTextures?.grass ?? seabedPlaceholder },
+      uRockMap: { value: terrainTextures?.rock ?? seabedPlaceholder },
+      uSnowMap: { value: terrainTextures?.snow ?? seabedPlaceholder },
+      uSandMax: { value: textureHeights.sandMax },
+      uGrassStart: { value: textureHeights.grassStart },
+      uGrassEnd: { value: textureHeights.grassEnd },
+      uRockStart: { value: textureHeights.rockStart },
+      uSnowStart: { value: textureHeights.snowStart },
+      uSeabedUVScale: { value: textureDensity / DEFAULT_REGION_SIZE },
+      uRefractionEnabled: { value: refractionEnabled ? 1.0 : 0.0 },
+      uWindDirection: { value: new THREE.Vector2(windDirection[0], windDirection[1]).normalize() },
     },
     vertexShader: waterVertexShader,
     fragmentShader: waterFragmentShader,
   });
+
+  material.userData.seabedPlaceholder = seabedPlaceholder;
+  return material;
 }
 
 // --- TerrainRegion ---
@@ -1323,6 +1516,9 @@ export class TerrainRegion {
     this.textureLoader = options.textureLoader ?? new THREE.TextureLoader();
     this.sunDirection = new THREE.Vector3(...(options.sunDirection ?? DEFAULT_SUN_DIRECTION)).normalize();
     this.onHeightmapChange = options.onHeightmapChange ?? null;
+    this.environment = options.environment ?? null;
+    this.refractionEnabled = options.refractionEnabled ?? true;
+    this.windDirection = options.windDirection ?? [1, 0.3];
 
     this.heightMap = options.heightMap ?? new Float32Array(this.samples * this.samples);
     if (this.heightMap.length !== this.samples * this.samples) {
@@ -1401,6 +1597,7 @@ export class TerrainRegion {
       samples: this.samples,
       waterLevel: this.waterLevel,
     });
+    const terrainTextures = this.terrainMesh?.material?.userData?.textures ?? null;
     const material = createWaterMaterial(this.textureLoader, {
       textures: this.textures,
       sunDirection: this.sunDirection,
@@ -1411,6 +1608,13 @@ export class TerrainRegion {
       deepAlpha: this.waterDeepAlpha,
       maxAlpha: this.waterMaxAlpha,
       pbrTextures: this.pbrTextures,
+      waterLevel: this.waterLevel,
+      terrainTextures,
+      textureHeights: this.textureHeights,
+      textureDensity: this.textureDensity,
+      windDirection: this.windDirection,
+      environment: this.environment,
+      refractionEnabled: this.refractionEnabled,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.y = this.waterLevel;
@@ -1472,6 +1676,11 @@ export class TerrainRegion {
       shader.uniforms.uWaterLevel.value = level;
     }
 
+    const waterUniforms = this.waterMesh.material.uniforms;
+    if (waterUniforms?.uWaterLevel) {
+      waterUniforms.uWaterLevel.value = level;
+    }
+
     this.sync();
     this.emitHeightmapChange();
     return this;
@@ -1507,6 +1716,11 @@ export class TerrainRegion {
     const shader = this.terrainMesh.material.userData?.shader;
     if (shader?.uniforms?.uTextureScale) {
       shader.uniforms.uTextureScale.value = density;
+    }
+
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uSeabedUVScale) {
+      wu.uSeabedUVScale.value = density / DEFAULT_REGION_SIZE;
     }
 
     return this;
@@ -1588,14 +1802,24 @@ export class TerrainRegion {
 
   syncTextureHeightUniforms() {
     const shader = this.terrainMesh.material.userData?.shader;
-    if (!shader?.uniforms) return this;
+    if (shader?.uniforms) {
+      if (shader.uniforms.uSandMax) shader.uniforms.uSandMax.value = this.textureHeights.sandMax;
+      if (shader.uniforms.uGrassStart) shader.uniforms.uGrassStart.value = this.textureHeights.grassStart;
+      if (shader.uniforms.uGrassEnd) shader.uniforms.uGrassEnd.value = this.textureHeights.grassEnd;
+      if (shader.uniforms.uRockStart) shader.uniforms.uRockStart.value = this.textureHeights.rockStart;
+      if (shader.uniforms.uSnowStart) shader.uniforms.uSnowStart.value = this.textureHeights.snowStart;
+      if (shader.uniforms.uBlendWidth) shader.uniforms.uBlendWidth.value = this.textureBlendWidth;
+    }
 
-    if (shader.uniforms.uSandMax) shader.uniforms.uSandMax.value = this.textureHeights.sandMax;
-    if (shader.uniforms.uGrassStart) shader.uniforms.uGrassStart.value = this.textureHeights.grassStart;
-    if (shader.uniforms.uGrassEnd) shader.uniforms.uGrassEnd.value = this.textureHeights.grassEnd;
-    if (shader.uniforms.uRockStart) shader.uniforms.uRockStart.value = this.textureHeights.rockStart;
-    if (shader.uniforms.uSnowStart) shader.uniforms.uSnowStart.value = this.textureHeights.snowStart;
-    if (shader.uniforms.uBlendWidth) shader.uniforms.uBlendWidth.value = this.textureBlendWidth;
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uSandMax) {
+      wu.uSandMax.value = this.textureHeights.sandMax;
+      wu.uGrassStart.value = this.textureHeights.grassStart;
+      wu.uGrassEnd.value = this.textureHeights.grassEnd;
+      wu.uRockStart.value = this.textureHeights.rockStart;
+      wu.uSnowStart.value = this.textureHeights.snowStart;
+    }
+
     return this;
   }
 
@@ -1761,6 +1985,48 @@ export class TerrainRegion {
     disposeTerrainTexture(uniform.value);
     uniform.value = nextTexture;
     this.textures[layer] = nextTexture;
+
+    // Sync terrain albedo textures to water shader for refraction seabed.
+    if (config.mesh === 'terrain') {
+      const waterUniformName = `u${layer.charAt(0).toUpperCase() + layer.slice(1)}Map`;
+      const waterUniform = this.waterMesh.material.uniforms?.[waterUniformName];
+      if (waterUniform) {
+        if (waterUniform.value?.userData?.seabedPlaceholder) {
+          disposeTerrainTexture(waterUniform.value);
+        }
+        waterUniform.value = nextTexture;
+      }
+    }
+
+    return this;
+  }
+
+  setEnvironment(envMap) {
+    this.environment = envMap;
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uEnvironment) {
+      wu.uEnvironment.value = envMap;
+      wu.uEnvEnabled.value = envMap ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setRefractionEnabled(enabled) {
+    this.refractionEnabled = Boolean(enabled);
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uRefractionEnabled) {
+      wu.uRefractionEnabled.value = this.refractionEnabled ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setWindDirection(direction) {
+    const vec = Array.isArray(direction) ? direction : [direction.x, direction.y];
+    this.windDirection = vec;
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uWindDirection) {
+      wu.uWindDirection.value.set(vec[0], vec[1]).normalize();
+    }
     return this;
   }
 
@@ -1780,6 +2046,12 @@ export class TerrainRegion {
 
     // Dispose water texture
     disposeTerrainTexture(this.waterMesh.material.uniforms?.uWaterMap?.value);
+
+    // Dispose seabed placeholder if it was never replaced
+    const placeholder = this.waterMesh.material.userData?.seabedPlaceholder;
+    if (placeholder) {
+      disposeTerrainTexture(placeholder);
+    }
 
     this.terrainMesh.geometry.dispose();
     this.waterMesh.geometry.dispose();

@@ -111,6 +111,12 @@ export interface TerrainRegionOptions {
   textureHeights?: Partial<TextureHeights>;
   textureBlendWidth?: number;
   onHeightmapChange?: ((region: TerrainRegion) => void) | null;
+  /** PMREM-processed cube environment map for IBL water reflection. Pass scene.environment. */
+  environment?: THREE.Texture | null;
+  /** Enable refraction of the seabed through the water surface. Default true. */
+  refractionEnabled?: boolean;
+  /** Wind direction (vec2) driving Gerstner wave propagation. Default [1, 0.3]. */
+  windDirection?: [number, number] | THREE.Vector2;
 }
 
 export interface PaintOptions {
@@ -158,6 +164,9 @@ export class TerrainRegion {
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh;
   boundaryFrame?: THREE.Line;
+  environment: THREE.Texture | null;
+  refractionEnabled: boolean;
+  windDirection: [number, number];
 
   constructor(options: TerrainRegionOptions);
 
@@ -194,6 +203,12 @@ export class TerrainRegion {
   setWaterIOR(ior: number): this;
   /** Sync water sun direction with scene lighting (normalized world-space vector). */
   setSunDirection(direction: THREE.Vector3): this;
+  /** Bind a PMREM-processed environment map for IBL water reflection (scene.environment). */
+  setEnvironment(envMap: THREE.Texture | null): this;
+  /** Toggle refraction of the seabed through the water surface. */
+  setRefractionEnabled(enabled: boolean): this;
+  /** Set wind direction driving Gerstner wave propagation. */
+  setWindDirection(direction: [number, number] | THREE.Vector2): this;
 
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;

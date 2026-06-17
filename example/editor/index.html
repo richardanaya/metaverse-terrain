@@ -53,7 +53,10 @@
           </label>
           <label>Water Level <span id="water-level-value">21.5m</span></label>
           <p class="control-note">Controlled by the Layer Heights slider.</p>
-
+          <label class="toggle-label" for="refraction-enabled">
+            <input id="refraction-enabled" type="checkbox" checked />
+            <span>Refraction</span>
+          </label>
         </div>
 
         <div class="control-group">
@@ -70,6 +73,14 @@
 
           <label class="sub-label" for="terrain-ao-intensity">Land AO Intensity <span id="terrain-ao-intensity-value">100%</span></label>
           <input id="terrain-ao-intensity" type="range" min="0" max="2" step="0.01" value="1" />
+        </div>
+
+        <div class="control-group">
+          <label for="sun-azimuth">Sun Azimuth <span id="sun-azimuth-value">37°</span></label>
+          <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="37" />
+
+          <label class="sub-label" for="sun-elevation">Sun Elevation <span id="sun-elevation-value">54°</span></label>
+          <input id="sun-elevation" type="range" min="-10" max="90" step="1" value="54" />
         </div>
 
         <div class="control-group">

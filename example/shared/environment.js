@@ -51,11 +51,15 @@ export async function setupPBREnvironment(scene, renderer, options = {}) {
       scene.background = environment;
     }
 
-    hdrTexture.dispose();
-    return { environment, sunLight };
+    // Keep the raw equirectangular HDR texture for custom ShaderMaterials.
+    // PMREM's `.texture` is a 2D DataTexture with CubeUV layout — wrong for
+    // `samplerCube`. Sampling the equirect directly with `sampler2D` + equirect
+    // UV mapping is version-robust and needs no extensions. The caller owns
+    // the texture's lifetime (it must outlive the TerrainRegion that uses it).
+    return { environment, envMap: hdrTexture, sunLight };
   } catch (error) {
     console.warn('Failed to load HDRI environment map; falling back to directional sun only.', error);
-    return { environment: null, sunLight };
+    return { environment: null, envMap: null, sunLight };
   } finally {
     pmrem.dispose();
   }
