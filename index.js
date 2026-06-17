@@ -23,7 +23,7 @@ export const DEFAULT_SAMPLES = DEFAULT_REGION_SIZE / DEFAULT_SAMPLE_SPACING + 1;
 export const DEFAULT_MIN_HEIGHT = -12;
 export const DEFAULT_MAX_HEIGHT = 52;
 export const DEFAULT_WATER_LEVEL = 21.5;
-export const DEFAULT_TEXTURE_DENSITY = 10;
+export const DEFAULT_TEXTURE_DENSITY = 20;
 export const DEFAULT_HEX_TILE_RATE = 0.5;
 export const DEFAULT_HEX_TILE_CONTRAST = 0.75;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
@@ -1044,6 +1044,25 @@ const waterFragmentShader = `
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
   }
 
+  float waterDaylight(vec3 sunDir) {
+    return smoothstep(-0.08, 0.22, sunDir.y);
+  }
+
+  vec3 waterSkyReflection(vec3 reflectedView, vec3 sunDir) {
+    float skyMix = smoothstep(-0.15, 0.75, reflectedView.y);
+    float dayMix = waterDaylight(sunDir);
+    vec3 dayLow = vec3(0.38, 0.66, 0.78);
+    vec3 dayHigh = vec3(0.86, 0.95, 1.0);
+    vec3 nightLow = vec3(0.02, 0.05, 0.10);
+    vec3 nightHigh = vec3(0.06, 0.10, 0.18);
+    vec3 twilightLow = vec3(0.14, 0.20, 0.32);
+    vec3 twilightHigh = vec3(0.38, 0.45, 0.58);
+    vec3 sky = mix(mix(nightLow, nightHigh, skyMix), mix(dayLow, dayHigh, skyMix), dayMix);
+    float twilight = (1.0 - dayMix) * smoothstep(-0.05, 0.12, sunDir.y);
+    sky = mix(sky, mix(twilightLow, twilightHigh, skyMix), twilight * 0.55);
+    return sky;
+  }
+
   void main() {
     vec2 waterWorldXZ = vWorldPosition.xz;
     vec3 waterSample = sampleWaterPattern(waterWorldXZ, uTime);
@@ -1065,6 +1084,8 @@ const waterFragmentShader = `
     normal = normalize(normal + texPerturb);
 
     vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+    vec3 sunDir = normalize(uSunDirection);
+    float daylight = waterDaylight(sunDir);
     float depth = clamp(vTerrainDepth, 0.0, 24.0);
     float depthMix = smoothstep(0.0, 13.0, depth);
     float depthAbsorption = 1.0 - exp(-depth * 0.18);
@@ -1083,7 +1104,7 @@ const waterFragmentShader = `
       float NdotV = max(dot(normal, viewDirection), 0.001);
       float fresnel = F_Schlick_water(NdotV, F0);
 
-      vec3 L = normalize(uSunDirection);
+      vec3 L = sunDir;
       vec3 H = normalize(viewDirection + L);
       float NdotH = max(dot(normal, H), 0.0);
       float NdotL = max(dot(normal, L), 0.0);
@@ -1106,32 +1127,33 @@ const waterFragmentShader = `
       float glancingBoost = smoothstep(0.18, 0.82, 1.0 - NdotV);
       float sunFacing = smoothstep(-0.05, 0.65, NdotL);
       float rippleGlint = 0.82 + ripple * 0.18;
-      float persistentGlint = (0.075 + 0.18 * sunFacing) * (0.62 + 0.38 * rippleCrest) * (1.0 - depthMix * 0.18);
-      float grazingGlint = glancingBoost * (0.07 + 0.15 * rippleCrest);
-      float broadSpec = pow(sunMirror, 3.6) * mix(0.28, 0.56, glancingBoost) * rippleGlint;
-      float midSpec = pow(sunMirror, 18.0) * mix(0.16, 0.32, glancingBoost);
-      float tightSpec = pow(sunMirror, 110.0) * 0.44;
+      float glintScale = mix(0.03, 1.0, daylight);
+      float persistentGlint = (0.075 + 0.18 * sunFacing) * (0.62 + 0.38 * rippleCrest) * (1.0 - depthMix * 0.18) * glintScale;
+      float grazingGlint = glancingBoost * (0.07 + 0.15 * rippleCrest) * glintScale;
+      float broadSpec = pow(sunMirror, 3.6) * mix(0.28, 0.56, glancingBoost) * rippleGlint * daylight;
+      float midSpec = pow(sunMirror, 18.0) * mix(0.16, 0.32, glancingBoost) * daylight;
+      float tightSpec = pow(sunMirror, 110.0) * 0.44 * daylight;
 
       // Cheap sky reflection approximation for the custom water shader. This fills
       // the role scene.environment would normally play in a standard PBR material.
       vec3 reflectedView = reflect(-viewDirection, normal);
-      float skyMix = smoothstep(-0.15, 0.75, reflectedView.y);
-      vec3 skyReflection = mix(vec3(0.38, 0.66, 0.78), vec3(0.86, 0.95, 1.0), skyMix);
-      float glancingReflection = 0.11 + pow(1.0 - NdotV, 1.7) * 0.46 + fresnel * 0.58;
+      vec3 skyReflection = waterSkyReflection(reflectedView, sunDir);
+      float glancingReflection = (0.11 + pow(1.0 - NdotV, 1.7) * 0.46 + fresnel * 0.58) * mix(0.45, 1.0, daylight);
 
       vec3 baseColor = mix(uShallowColor, uDeepColor, depthAbsorption);
       baseColor = mix(baseColor, waterSample, mix(0.16, 0.055, depthAbsorption));
-      baseColor *= mix(1.08, 0.64, depthAbsorption);
+      baseColor *= mix(1.08, 0.64, depthAbsorption) * mix(0.52, 1.0, daylight);
       baseColor += ripple * mix(0.025, 0.010, depthAbsorption);
 
-      float sss = pow(max(dot(viewDirection, -L), 0.0), 4.0) * 0.15;
+      float sss = pow(max(dot(viewDirection, -L), 0.0), 4.0) * 0.15 * daylight;
       vec3 subsurface = vec3(0.0, 0.4, 0.5) * sss * (1.0 - depthMix);
 
+      vec3 fresnelTint = mix(vec3(0.15, 0.22, 0.32), vec3(0.72, 0.88, 0.96), daylight);
       finalColor = baseColor * (1.0 - fresnel * 0.42);
       finalColor = mix(finalColor, skyReflection, clamp(glancingReflection, 0.0, 0.68));
-      finalColor += vec3(1.0, 0.95, 0.8) * (spec * NdotL * 0.38 + persistentGlint + grazingGlint + broadSpec + midSpec + tightSpec);
+      finalColor += vec3(1.0, 0.95, 0.8) * (spec * NdotL * 0.38 * daylight + persistentGlint + grazingGlint + broadSpec + midSpec + tightSpec);
       finalColor += subsurface;
-      finalColor = mix(finalColor, vec3(0.72, 0.88, 0.96), fresnel * 0.14);
+      finalColor = mix(finalColor, fresnelTint, fresnel * 0.14);
 
       float shore = 1.0 - smoothstep(0.0, 2.4, vTerrainDepth);
       float foamNoise = sin(vUv.x * 210.0 + uTime * 1.4) * sin(vUv.y * 185.0 - uTime * 1.1);
@@ -1157,23 +1179,25 @@ const waterFragmentShader = `
       color = mix(color, waterSample, mix(0.16, 0.055, depthAbsorption2));
       color *= mix(1.08, 0.64, depthAbsorption2);
       color += ripple2 * mix(0.035, 0.014, depthAbsorption2);
+      color *= mix(0.52, 1.0, daylight);
       vec3 reflectedView2 = reflect(-viewDirection, baseNormal);
-      float skyMix2 = smoothstep(-0.15, 0.75, reflectedView2.y);
-      vec3 skyReflection2 = mix(vec3(0.38, 0.66, 0.78), vec3(0.86, 0.95, 1.0), skyMix2);
-      color = mix(color, skyReflection2, clamp(0.07 + fresnel2 * 0.42, 0.0, 0.58));
-      color = mix(color, vec3(0.72, 0.88, 0.96), fresnel2 * 0.12);
+      vec3 skyReflection2 = waterSkyReflection(reflectedView2, sunDir);
+      float legacyGlance = (0.07 + fresnel2 * 0.42) * mix(0.45, 1.0, daylight);
+      color = mix(color, skyReflection2, clamp(legacyGlance, 0.0, 0.58));
+      vec3 fresnelTint2 = mix(vec3(0.15, 0.22, 0.32), vec3(0.72, 0.88, 0.96), daylight);
+      color = mix(color, fresnelTint2, fresnel2 * 0.12);
 
-      vec3 sunDir2 = normalize(uSunDirection);
-      vec3 reflectedSun = reflect(-sunDir2, baseNormal);
+      vec3 reflectedSun = reflect(-sunDir, baseNormal);
       float sunMirror2 = max(dot(reflectedSun, viewDirection), 0.0);
       float glancingBoost2 = smoothstep(0.18, 0.82, 1.0 - max(dot(baseNormal, viewDirection), 0.0));
-      float sunFacing2 = smoothstep(-0.05, 0.65, max(dot(baseNormal, sunDir2), 0.0));
-      float persistentGlint2 = (0.075 + 0.18 * sunFacing2) * (0.62 + 0.38 * rippleCrest2) * (1.0 - depthMix2 * 0.18);
+      float sunFacing2 = smoothstep(-0.05, 0.65, max(dot(baseNormal, sunDir), 0.0));
+      float glintScale2 = mix(0.03, 1.0, daylight);
+      float persistentGlint2 = (0.075 + 0.18 * sunFacing2) * (0.62 + 0.38 * rippleCrest2) * (1.0 - depthMix2 * 0.18) * glintScale2;
       float specular = persistentGlint2
-        + glancingBoost2 * (0.07 + 0.15 * rippleCrest2)
-        + pow(sunMirror2, 92.0) * 0.38
-        + pow(sunMirror2, 18.0) * mix(0.14, 0.29, glancingBoost2)
-        + pow(sunMirror2, 3.6) * mix(0.24, 0.48, glancingBoost2);
+        + glancingBoost2 * (0.07 + 0.15 * rippleCrest2) * glintScale2
+        + pow(sunMirror2, 92.0) * 0.38 * daylight
+        + pow(sunMirror2, 18.0) * mix(0.14, 0.29, glancingBoost2) * daylight
+        + pow(sunMirror2, 3.6) * mix(0.24, 0.48, glancingBoost2) * daylight;
       color += vec3(1.0, 0.93, 0.74) * specular;
 
       float shore2 = 1.0 - smoothstep(0.0, 2.4, vTerrainDepth);
@@ -1604,6 +1628,14 @@ export class TerrainRegion {
   setWaterIOR(ior) {
     if (this.waterMesh.material.uniforms?.uWaterIOR) {
       this.waterMesh.material.uniforms.uWaterIOR.value = ior;
+    }
+    return this;
+  }
+
+  setSunDirection(direction) {
+    this.sunDirection.copy(direction).normalize();
+    if (this.waterMesh?.material?.uniforms?.uSunDirection) {
+      this.waterMesh.material.uniforms.uSunDirection.value.copy(this.sunDirection);
     }
     return this;
   }

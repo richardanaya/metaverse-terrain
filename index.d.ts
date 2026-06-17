@@ -192,6 +192,8 @@ export class TerrainRegion {
   setPBREnabled(enabled: boolean): this;
   /** Set water index of refraction for fresnel/specular (default `1.33`). */
   setWaterIOR(ior: number): this;
+  /** Sync water sun direction with scene lighting (normalized world-space vector). */
+  setSunDirection(direction: THREE.Vector3): this;
 
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;
