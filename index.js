@@ -1068,6 +1068,7 @@ const waterFragmentShader = `
     float depth = clamp(vTerrainDepth, 0.0, 24.0);
     float depthMix = smoothstep(0.0, 13.0, depth);
     float depthAbsorption = 1.0 - exp(-depth * 0.18);
+    float depthAlpha = 1.0 - exp(-depth * 0.32);
 
     vec3 finalColor;
     float finalAlpha;
@@ -1138,13 +1139,14 @@ const waterFragmentShader = `
       float foam = shore * smoothstep(0.18, 0.78, foamNoise + ripple * 0.42) * 0.68 + textureFoam * 0.07;
       finalColor = mix(finalColor, uFoamColor, foam * 0.32);
 
-      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAbsorption) + fresnel * 0.16 + shore * 0.08;
+      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAlpha) + fresnel * 0.16 + shore * 0.08;
     } else {
       // --- Legacy water ---
       vec3 baseNormal = normalize(vWaveNormal + vec3((waterDetail - waterDetailX) * 1.35, 0.0, (waterDetail - waterDetailY) * 1.35));
       float depth2 = clamp(vTerrainDepth, 0.0, 24.0);
       float depthMix2 = smoothstep(0.0, 13.0, depth2);
       float depthAbsorption2 = 1.0 - exp(-depth2 * 0.18);
+      float depthAlpha2 = 1.0 - exp(-depth2 * 0.32);
       float fresnel2 = pow(1.0 - max(dot(baseNormal, viewDirection), 0.0), 3.0);
 
       float ripple2 = waterRippleSignal(waterWorldXZ, uTime);
@@ -1181,7 +1183,7 @@ const waterFragmentShader = `
       color = mix(color, uFoamColor, foam2 * 0.32);
 
       finalColor = color;
-      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAbsorption2) + fresnel2 * 0.16 + shore2 * 0.08;
+      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAlpha2) + fresnel2 * 0.16 + shore2 * 0.08;
     }
 
     // Distance fog
@@ -1204,9 +1206,9 @@ function createWaterMaterial(textureLoader, options) {
     shallowColor = 0x8fcfd2,
     deepColor = 0x0b2d3d,
     foamColor = 0xe8fbff,
-    shallowAlpha = 0.42,
-    deepAlpha = 0.82,
-    maxAlpha = 0.9,
+    shallowAlpha = 0.5,
+    deepAlpha = 0.94,
+    maxAlpha = 0.97,
     pbrTextures,
   } = options;
 
@@ -1283,8 +1285,8 @@ export class TerrainRegion {
     this.waterDeepColor = options.waterDeepColor ?? 0x0c4a66;
     this.waterFoamColor = options.waterFoamColor ?? 0xe8fbff;
     this.waterShallowAlpha = options.waterShallowAlpha ?? 0.5;
-    this.waterDeepAlpha = options.waterDeepAlpha ?? 0.74;
-    this.waterMaxAlpha = options.waterMaxAlpha ?? 0.88;
+    this.waterDeepAlpha = options.waterDeepAlpha ?? 0.94;
+    this.waterMaxAlpha = options.waterMaxAlpha ?? 0.97;
     this.textureDensity = options.textureDensity ?? DEFAULT_TEXTURE_DENSITY;
     this.hexTileRate = options.hexTileRate ?? DEFAULT_HEX_TILE_RATE;
     this.hexTileContrast = options.hexTileContrast ?? DEFAULT_HEX_TILE_CONTRAST;
