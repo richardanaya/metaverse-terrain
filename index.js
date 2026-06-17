@@ -1029,6 +1029,7 @@ const waterFragmentShader = `
   uniform sampler2D uWaterMRAO;
   uniform float uPBREnabled;
   uniform float uWaterIOR;
+  uniform float uWaterDarkness;
 
   // IBL reflection (equirectangular HDR sampled directly; PMREM CubeUV layout
   // is incompatible with samplerCube, so we use sampler2D + equirect UVs).
@@ -1120,6 +1121,29 @@ const waterFragmentShader = `
 
   float waterDaylight(vec3 sunDir) {
     return smoothstep(-0.08, 0.22, sunDir.y);
+  }
+
+  // waterDarkness: 0 = pristine beach (clear turquoise), 0.5 = ocean, 1 = swamp (murky).
+  vec3 waterEffectiveShallow() {
+    vec3 pristine = vec3(0.35, 0.82, 0.78);
+    vec3 swamp = vec3(0.32, 0.36, 0.22);
+    if (uWaterDarkness < 0.5) {
+      return mix(uShallowColor, pristine, 1.0 - uWaterDarkness * 2.0);
+    }
+    return mix(uShallowColor, swamp, (uWaterDarkness - 0.5) * 2.0);
+  }
+
+  vec3 waterEffectiveDeep() {
+    vec3 pristine = vec3(0.10, 0.42, 0.52);
+    vec3 swamp = vec3(0.14, 0.16, 0.08);
+    if (uWaterDarkness < 0.5) {
+      return mix(uDeepColor, pristine, 1.0 - uWaterDarkness * 2.0);
+    }
+    return mix(uDeepColor, swamp, (uWaterDarkness - 0.5) * 2.0);
+  }
+
+  float waterAbsorptionScale() {
+    return mix(0.35, 3.0, uWaterDarkness);
   }
 
   // Analytic sky fallback when no IBL environment is bound.
@@ -1248,7 +1272,8 @@ const waterFragmentShader = `
     float sunAngleFactor = 1.0 / max(sunDir.y, 0.12);
     float lightPath = depth * sunAngleFactor;
     // Spectral absorption coefficients: red dies first, blue last.
-    vec3 sigmaT = vec3(0.18, 0.10, 0.04);
+    // Scaled by water darkness (pristine = clear, swamp = murky).
+    vec3 sigmaT = vec3(0.18, 0.10, 0.04) * waterAbsorptionScale();
     vec3 spectralTransmittance = exp(-sigmaT * lightPath);
     float spectralAbsorption = 1.0 - spectralTransmittance.g;
     float spectralAlpha = 1.0 - exp(-lightPath * 0.32);
@@ -1295,7 +1320,7 @@ const waterFragmentShader = `
       vec3 skyReflection = sampleEnvReflection(reflectedView, roughness, sunDir);
       float glancingReflection = (0.11 + pow(1.0 - NdotV, 1.7) * 0.46 + fresnel * 0.58) * mix(0.45, 1.0, daylight);
 
-      vec3 baseColor = mix(uShallowColor, uDeepColor, 1.0 - spectralTransmittance);
+      vec3 baseColor = mix(waterEffectiveShallow(), waterEffectiveDeep(), 1.0 - spectralTransmittance);
 
       // Refraction: blend refracted seabed into shallow water. Fades out as
       // spectral absorption climbs (deep water at low sun = opaque).
@@ -1326,21 +1351,21 @@ const waterFragmentShader = `
       float foam = max(shore * smoothstep(0.18, 0.78, jacobianFoam + ripple * 0.42) * 0.68, jacobianFoam * 0.25) + textureFoam * 0.07;
       finalColor = mix(finalColor, uFoamColor, foam * 0.32);
 
-      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, spectralAlpha) + fresnel * 0.16 + shore * 0.08;
+      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, spectralAlpha) * mix(0.75, 1.25, uWaterDarkness) + fresnel * 0.16 + shore * 0.08;
     } else {
       // --- Legacy water ---
       vec3 baseNormal = normalize(vWaveNormal + vec3((waterDetail - waterDetailX) * 1.35, 0.0, (waterDetail - waterDetailY) * 1.35));
       float depth2 = clamp(vTerrainDepth, 0.0, 24.0);
       float depthMix2 = smoothstep(0.0, 13.0, depth2);
-      float depthAbsorption2 = 1.0 - exp(-depth2 * 0.18);
-      float depthAlpha2 = 1.0 - exp(-depth2 * 0.32);
+      float depthAbsorption2 = 1.0 - exp(-depth2 * 0.18 * waterAbsorptionScale());
+      float depthAlpha2 = 1.0 - exp(-depth2 * 0.32 * waterAbsorptionScale());
       float fresnel2 = pow(1.0 - max(dot(baseNormal, viewDirection), 0.0), 3.0);
 
       float ripple2 = waterRippleSignal(waterWorldXZ, uTime);
       float rippleFine2 = waterRippleSignal(waterWorldXZ * 1.73 + vec2(19.0, -31.0), uTime * 1.19);
       float rippleCrest2 = smoothstep(0.42, 1.0, ripple2 * 0.62 + rippleFine2 * 0.38);
 
-      vec3 color = mix(uShallowColor, uDeepColor, depthAbsorption2);
+      vec3 color = mix(waterEffectiveShallow(), waterEffectiveDeep(), depthAbsorption2);
 
       // Refraction in legacy mode too.
       if (uRefractionEnabled > 0.5) {
@@ -1384,7 +1409,7 @@ const waterFragmentShader = `
       color = mix(color, uFoamColor, foam2 * 0.32);
 
       finalColor = color;
-      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAlpha2) + fresnel2 * 0.16 + shore2 * 0.08;
+      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAlpha2) * mix(0.75, 1.25, uWaterDarkness) + fresnel2 * 0.16 + shore2 * 0.08;
     }
 
     // Distance fog
@@ -1421,6 +1446,7 @@ function createWaterMaterial(textureLoader, options) {
     textureDensity = DEFAULT_TEXTURE_DENSITY,
     windDirection = [1, 0.3],
     windSpeed = 5.0,
+    waterDarkness = 0.5,
     environment = null,
     refractionEnabled = true,
   } = options;
@@ -1468,6 +1494,7 @@ function createWaterMaterial(textureLoader, options) {
       uWaterMRAO: { value: waterPBR?.mrao ? loadTerrainTexture(textureLoader, waterPBR.mrao, false) : defaultMRAO },
       uPBREnabled: { value: hasPBR ? 1.0 : 0.0 },
       uWaterIOR: { value: 1.33 },
+      uWaterDarkness: { value: waterDarkness },
       uEnvironment: { value: environment },
       uEnvEnabled: { value: environment ? 1.0 : 0.0 },
       uSandMap: { value: terrainTextures?.sand ?? seabedPlaceholder },
@@ -1540,6 +1567,7 @@ export class TerrainRegion {
     this.refractionEnabled = options.refractionEnabled ?? true;
     this.windDirection = options.windDirection ?? [1, 0.3];
     this.windSpeed = options.windSpeed ?? 5.0;
+    this.waterDarkness = options.waterDarkness ?? 0.5;
 
     this.heightMap = options.heightMap ?? new Float32Array(this.samples * this.samples);
     if (this.heightMap.length !== this.samples * this.samples) {
@@ -1635,6 +1663,7 @@ export class TerrainRegion {
       textureDensity: this.textureDensity,
       windDirection: this.windDirection,
       windSpeed: this.windSpeed,
+      waterDarkness: this.waterDarkness,
       environment: this.environment,
       refractionEnabled: this.refractionEnabled,
     });
@@ -2057,6 +2086,15 @@ export class TerrainRegion {
     const wu = this.waterMesh.material.uniforms;
     if (wu?.uWindSpeed) {
       wu.uWindSpeed.value = this.windSpeed;
+    }
+    return this;
+  }
+
+  setWaterDarkness(darkness) {
+    this.waterDarkness = clamp(darkness, 0, 1);
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uWaterDarkness) {
+      wu.uWaterDarkness.value = this.waterDarkness;
     }
     return this;
   }

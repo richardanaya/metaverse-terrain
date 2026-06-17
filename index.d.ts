@@ -119,6 +119,8 @@ export interface TerrainRegionOptions {
   windDirection?: [number, number] | THREE.Vector2;
   /** Wind speed scaling wave amplitude and propagation rate. Default 5.0 (0 = calm, 15 = stormy). */
   windSpeed?: number;
+  /** Water darkness: 0 = pristine beach, 0.5 = ocean, 1 = swamp. Controls color tint, absorption, and opacity. */
+  waterDarkness?: number;
 }
 
 export interface PaintOptions {
@@ -170,6 +172,7 @@ export class TerrainRegion {
   refractionEnabled: boolean;
   windDirection: [number, number];
   windSpeed: number;
+  waterDarkness: number;
 
   constructor(options: TerrainRegionOptions);
 
@@ -214,6 +217,8 @@ export class TerrainRegion {
   setWindDirection(direction: [number, number] | THREE.Vector2): this;
   /** Set wind speed scaling wave amplitude and propagation rate. */
   setWindSpeed(speed: number): this;
+  /** Set water darkness (0 = pristine beach, 0.5 = ocean, 1 = swamp). */
+  setWaterDarkness(darkness: number): this;
 
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;

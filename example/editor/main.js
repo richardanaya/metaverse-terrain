@@ -39,6 +39,8 @@ const windDirectionInput = document.querySelector('#wind-direction');
 const windSpeedInput = document.querySelector('#wind-speed');
 const windDirectionValue = document.querySelector('#wind-direction-value');
 const windSpeedValue = document.querySelector('#wind-speed-value');
+const waterDarknessInput = document.querySelector('#water-darkness');
+const waterDarknessValue = document.querySelector('#water-darkness-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
@@ -215,6 +217,15 @@ function bindPanel() {
   bindRange(windSpeedInput, windSpeedValue, (value) => {
     terrain.setWindSpeed(value);
     return value.toFixed(1);
+  });
+
+  bindRange(waterDarknessInput, waterDarknessValue, (value) => {
+    terrain.setWaterDarkness(value);
+    if (value < 0.2) return 'Pristine';
+    if (value < 0.4) return 'Clear';
+    if (value < 0.6) return 'Ocean';
+    if (value < 0.8) return 'Murky';
+    return 'Swamp';
   });
 
   modeButtons.forEach((button) => {
