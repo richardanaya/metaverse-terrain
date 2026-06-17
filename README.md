@@ -3,7 +3,7 @@
 
 # metaverse-terrain
 
-Three.js terrain library with hex-tiled texture blending, animated water, and heightmap brush editing.
+Three.js terrain library with hex-tiled texture blending, optional PBR maps (normal, metallic, roughness, AO), animated water, and heightmap brush editing.
 
 `TerrainRegion` owns the terrain mesh, shaders, and height data. Your app owns the scene graph, camera, input, and raycasting.
 
@@ -69,6 +69,62 @@ const textures = {
   water: `${TEXTURE_BASE}/terrain-water.png`,
 };
 ```
+
+### PBR textures (optional)
+
+PBR is optional — albedo-only terrain still works. To enable physically based shading, provide per-layer **normal**, **metallic**, **roughness**, and **AO** maps (or a pre-packed **MRAO** texture). Reference maps ship with the package:
+
+```js
+const pbrTextures = {
+  sand: {
+    metal: `${TEXTURE_BASE}/terrain-sand_metal.png`,
+    roughness: `${TEXTURE_BASE}/terrain-sand_roughness.png`,
+    normal: `${TEXTURE_BASE}/terrain-sand_normal.png`,
+    ao: `${TEXTURE_BASE}/terrain-sand_ao.png`,
+  },
+  grass: {
+    metal: `${TEXTURE_BASE}/terrain-grass_metal.png`,
+    roughness: `${TEXTURE_BASE}/terrain-grass_roughness.png`,
+    normal: `${TEXTURE_BASE}/terrain-grass_normal.png`,
+    ao: `${TEXTURE_BASE}/terrain-grass_ao.png`,
+  },
+  rock: {
+    metal: `${TEXTURE_BASE}/terrain-rock_metal.png`,
+    roughness: `${TEXTURE_BASE}/terrain-rock_roughness.png`,
+    normal: `${TEXTURE_BASE}/terrain-rock_normal.png`,
+    ao: `${TEXTURE_BASE}/terrain-rock_ao.png`,
+  },
+  snow: {
+    metal: `${TEXTURE_BASE}/terrain-snow_metal.png`,
+    roughness: `${TEXTURE_BASE}/terrain-snow_roughness.png`,
+    normal: `${TEXTURE_BASE}/terrain-snow_normal.png`,
+    ao: `${TEXTURE_BASE}/terrain-snow_ao.png`,
+  },
+  water: {
+    metal: `${TEXTURE_BASE}/terrain-water_metal.png`,
+    roughness: `${TEXTURE_BASE}/terrain-water_roughness.png`,
+    normal: `${TEXTURE_BASE}/terrain-water_normal.png`,
+    ao: `${TEXTURE_BASE}/terrain-water_ao.png`,
+  },
+};
+```
+
+`loadPBRTextureSet()` loads the maps and packs metallic, roughness, and AO into a single MRAO texture per layer:
+
+```js
+import { TerrainRegion, loadPBRTextureSet } from 'metaverse-terrain';
+
+const packedPBR = await loadPBRTextureSet(pbrTextures);
+
+const region = new TerrainRegion({
+  textures,
+  pbrTextures: packedPBR,
+  normalStrength: 1.0,
+  terrainAOIntensity: 1.0,
+});
+```
+
+For best results, set `scene.environment` from an HDRI (image-based lighting). The bundled examples load a Venice sunset HDR via Three.js `RGBELoader` and `PMREMGenerator`. PBR terrain integrates with Three.js `MeshStandardMaterial`; water uses a custom shader with fresnel, specular, and normal detail. Disable PBR water at runtime with `region.setPBREnabled(false)` on low-end devices.
 
 ### Minimal example
 
@@ -204,20 +260,33 @@ bindTextureDrop(region); // needs [data-texture-drop="grass"] elements in HTML
 
 ```js
 import * as THREE from 'three';
-import { TerrainRegion } from 'metaverse-terrain';
+import { TerrainRegion, loadPBRTextureSet } from 'metaverse-terrain';
 import sand from 'metaverse-terrain/texture/terrain-sand.png';
 import grass from 'metaverse-terrain/texture/terrain-grass.png';
 import rock from 'metaverse-terrain/texture/terrain-rock.png';
 import snow from 'metaverse-terrain/texture/terrain-snow.png';
 import water from 'metaverse-terrain/texture/terrain-water.png';
+import sandMetal from 'metaverse-terrain/texture/terrain-sand_metal.png';
+import sandRoughness from 'metaverse-terrain/texture/terrain-sand_roughness.png';
+import sandNormal from 'metaverse-terrain/texture/terrain-sand_normal.png';
+import sandAO from 'metaverse-terrain/texture/terrain-sand_ao.png';
+// ... same pattern for grass, rock, snow, water
+
+const pbrTextures = await loadPBRTextureSet({
+  sand: { metal: sandMetal, roughness: sandRoughness, normal: sandNormal, ao: sandAO },
+  // grass, rock, snow, water ...
+});
 
 const region = new TerrainRegion({
   textures: { sand, grass, rock, snow, water },
+  pbrTextures,
   seed: 42,
 });
 
 scene.add(region.group);
 ```
+
+Omit `pbrTextures` for albedo-only rendering.
 
 ---
 
@@ -226,10 +295,12 @@ scene.add(region.group);
 | Export | Purpose |
 |--------|---------|
 | `TerrainRegion` | Terrain mesh, water, heightmap, brush state |
+| `loadPBRTextureSet` | Load and pack PBR maps (metal, roughness, normal, AO → MRAO) |
 | `getTerrainHitFromPointer` | Screen coords → terrain intersection |
 | `bindTerrainPainting` | Wire pointer events to brush painting |
 | `bindTextureDrop` | Drag-and-drop images onto texture swatches |
 | `TERRAIN_TEXTURE_LAYERS` | `['sand', 'grass', 'rock', 'snow', 'water']` |
+| `PBR_CHANNELS` | `['metal', 'roughness', 'normal', 'ao']` |
 | `DEFAULT_TEXTURE_HEIGHTS` | Default height blend thresholds |
 
 **`TerrainRegion` methods**
@@ -242,6 +313,8 @@ scene.add(region.group);
 | `setWaterLevel` / `setWaterEnabled` | Water plane |
 | `setTextureDensity` / `setHexTileRate` / `setHexTileContrast` | Shader tiling |
 | `setTextureHeights` | Sand/grass/rock/snow height bands |
+| `setNormalStrength` / `setTerrainAOIntensity` | PBR normal and AO intensity |
+| `setPBREnabled` / `setWaterIOR` | PBR water toggle and index of refraction |
 | `setTerrainTexture(layer, source)` | Replace a texture at runtime |
 | `randomize(seed?)` / `level(height?)` | Regenerate or flatten heightmap |
 | `drawHeightmapPreview(canvas)` / `downloadHeightmap()` | Export heightmap |
@@ -258,8 +331,8 @@ cd metaverse-terrain
 python3 -m http.server 8080
 ```
 
-- [Editor](http://localhost:8080/example/editor/) — full brush editor
-- [Minimal](http://localhost:8080/example/simple/) — smallest integration
+- [Editor](http://localhost:8080/example/editor/) — full brush editor with PBR and HDRI lighting
+- [Minimal](http://localhost:8080/example/simple/) — smallest PBR integration
 
 ## License
 

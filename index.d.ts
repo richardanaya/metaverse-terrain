@@ -19,6 +19,8 @@ export const DEFAULT_TEXTURE_BLEND_WIDTH: number;
 
 export type BrushMode = 'raise' | 'lower' | 'flatten';
 export type TerrainTextureLayer = (typeof TERRAIN_TEXTURE_LAYERS)[number];
+export type PBRChannel = (typeof PBR_CHANNELS)[number];
+export type PBRLayer = TerrainTextureLayer;
 
 export interface TerrainTextures {
   sand: string | THREE.Texture;
@@ -28,34 +30,30 @@ export interface TerrainTextures {
   water: string | THREE.Texture;
 }
 
+/** Per-layer metallic-roughness PBR maps. Provide separate channels or a pre-packed `mrao` texture. */
 export interface PBRTextureSet {
+  /** Metallic channel (packed into MRAO `.r` when using `loadPBRTextureSet`). */
   metal?: string | THREE.Texture | null;
+  /** Roughness channel (packed into MRAO `.g`). */
   roughness?: string | THREE.Texture | null;
+  /** Tangent-space normal map. */
   normal?: string | THREE.Texture | null;
+  /** Ambient occlusion (packed into MRAO `.b`). */
   ao?: string | THREE.Texture | null;
+  /** Pre-packed MRAO texture (metal, roughness, AO in RGB). Skips runtime packing. */
   mrao?: string | THREE.Texture | null;
 }
 
-export interface PBRTextures {
-  sand?: PBRTextureSet;
-  grass?: PBRTextureSet;
-  rock?: PBRTextureSet;
-  snow?: PBRTextureSet;
-  water?: PBRTextureSet;
-}
+/** Optional PBR maps for each terrain layer. Albedo textures remain required in `TerrainTextures`. */
+export type PBRTextures = Partial<Record<PBRLayer, PBRTextureSet>>;
 
+/** Packed PBR textures ready to pass to `TerrainRegion` as `pbrTextures`. */
 export interface LoadedPBRTextureSet {
   normal: THREE.Texture | null;
   mrao: THREE.Texture | null;
 }
 
-export interface LoadedPBRTextures {
-  sand?: LoadedPBRTextureSet;
-  grass?: LoadedPBRTextureSet;
-  rock?: LoadedPBRTextureSet;
-  snow?: LoadedPBRTextureSet;
-  water?: LoadedPBRTextureSet;
-}
+export type LoadedPBRTextures = Partial<Record<PBRLayer, LoadedPBRTextureSet>>;
 
 export interface TextureHeights {
   sandMax: number;
@@ -100,8 +98,11 @@ export interface TerrainRegionOptions {
   seed?: number;
   heightMap?: Float32Array;
   textures: TerrainTextures;
-  pbrTextures?: PBRTextures;
+  /** Optional PBR normal/MRAO maps per layer. Use `loadPBRTextureSet()` to pack channels. */
+  pbrTextures?: PBRTextures | LoadedPBRTextures | null;
+  /** Scales blended terrain normal maps. Default `1.0`. */
   normalStrength?: number;
+  /** Scales terrain ambient occlusion from MRAO maps. Default `1.0`. */
   terrainAOIntensity?: number;
   sunDirection?: [number, number, number];
   textureLoader?: THREE.TextureLoader;
@@ -144,7 +145,7 @@ export class TerrainRegion {
   textureHeights: TextureHeights;
   textureBlendWidth: number;
   textures: TerrainTextures;
-  pbrTextures: PBRTextures | null;
+  pbrTextures: PBRTextures | LoadedPBRTextures | null;
   normalStrength: number;
   terrainAOIntensity: number;
   textureLoader: THREE.TextureLoader;
@@ -183,9 +184,13 @@ export class TerrainRegion {
   setHexTileContrast(contrast: number): this;
   setTextureHeights(heights: Partial<TextureHeights>): this;
   syncTextureHeightUniforms(): this;
+  /** Scale blended terrain normal maps at runtime. */
   setNormalStrength(strength: number): this;
+  /** Scale terrain AO contribution from MRAO maps at runtime. */
   setTerrainAOIntensity(intensity: number): this;
+  /** Toggle PBR water shading (specular, fresnel, normal detail). */
   setPBREnabled(enabled: boolean): this;
+  /** Set water index of refraction for fresnel/specular (default `1.33`). */
   setWaterIOR(ior: number): this;
 
   setBrushMode(mode: BrushMode): this;
