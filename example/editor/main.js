@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { TerrainRegion, bindTerrainPainting, bindTextureDrop } from 'metaverse-terrain';
-import { TEXTURE_URLS } from '../shared/textures.js';
+import { TerrainRegion, bindTerrainPainting, bindTextureDrop, loadPBRTextureSet } from 'metaverse-terrain';
+import { setupPBREnvironment } from '../shared/environment.js';
+import { TEXTURE_URLS, PBR_TEXTURE_URLS } from '../shared/textures.js';
 
 const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');
@@ -10,28 +11,39 @@ const regionSizeInput = document.querySelector('#region-size');
 const brushSizeInput = document.querySelector('#brush-size');
 const brushStrengthInput = document.querySelector('#brush-strength');
 const waterEnabledInput = document.querySelector('#water-enabled');
-const waterLevelInput = document.querySelector('#water-level');
+const layerSlider = document.querySelector('#layer-slider');
+const layerGradient = layerSlider.querySelector('.layer-slider-gradient');
+const layerHandles = [...layerSlider.querySelectorAll('.layer-handle')];
 const textureDensityInput = document.querySelector('#texture-density');
 const hexTileRateInput = document.querySelector('#hex-tile-rate');
 const hexTileContrastInput = document.querySelector('#hex-tile-contrast');
-const sandMaxInput = document.querySelector('#sand-max');
-const grassStartInput = document.querySelector('#grass-start');
-const grassEndInput = document.querySelector('#grass-end');
-const rockStartInput = document.querySelector('#rock-start');
-const snowStartInput = document.querySelector('#snow-start');
 const regionSizeValue = document.querySelector('#region-size-value');
 const brushSizeValue = document.querySelector('#brush-size-value');
 const brushStrengthValue = document.querySelector('#brush-strength-value');
 const waterLevelValue = document.querySelector('#water-level-value');
+const waterLayerValue = document.querySelector('#water-layer-value');
 const textureDensityValue = document.querySelector('#texture-density-value');
 const hexTileRateValue = document.querySelector('#hex-tile-rate-value');
 const hexTileContrastValue = document.querySelector('#hex-tile-contrast-value');
-const sandMaxValue = document.querySelector('#sand-max-value');
+const terrainAOIntensityInput = document.querySelector('#terrain-ao-intensity');
+const terrainAOIntensityValue = document.querySelector('#terrain-ao-intensity-value');
 const grassStartValue = document.querySelector('#grass-start-value');
-const grassEndValue = document.querySelector('#grass-end-value');
 const rockStartValue = document.querySelector('#rock-start-value');
 const snowStartValue = document.querySelector('#snow-start-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
+
+const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
+const LAYER_GAP = 1;
+const layerRange = {
+  min: Number(layerSlider.dataset.min),
+  max: Number(layerSlider.dataset.max),
+};
+const layerHeights = {
+  water: Number(layerSlider.dataset.water),
+  grass: Number(layerSlider.dataset.grass),
+  rock: Number(layerSlider.dataset.rock),
+  snow: Number(layerSlider.dataset.snow),
+};
 
 const activeKeys = new Set();
 const avatarControls = {
@@ -56,6 +68,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 
+const environmentReady = setupPBREnvironment(scene, renderer, { shadows: true });
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 10, 0);
 controls.enableDamping = true;
@@ -76,30 +90,47 @@ const movementForward = new THREE.Vector3();
 const movementDelta = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3();
 
-const terrain = new TerrainRegion({
-  seed: 29,
-  regionSize: Number(regionSizeInput.value),
-  textureDensity: Number(textureDensityInput.value),
-  textures: TEXTURE_URLS,
-  onHeightmapChange: refreshHeightmapPreview,
-});
-scene.add(terrain.group);
+let terrain, painting;
 
-const painting = bindTerrainPainting(terrain, {
-  domElement: renderer.domElement,
-  camera,
-  raycaster,
-  pointer,
-  setControlsEnabled: (enabled) => {
-    controls.enabled = enabled;
-  },
-});
+async function init() {
+  // Load and pack PBR textures while the HDRI environment initializes.
+  const [pbrTextures] = await Promise.all([
+    loadPBRTextureSet(PBR_TEXTURE_URLS),
+    environmentReady,
+  ]);
+  
+  terrain = new TerrainRegion({
+    seed: 29,
+    regionSize: Number(regionSizeInput.value),
+    waterLevel: layerHeights.water,
+    terrainAOIntensity: Number(terrainAOIntensityInput.value),
+    textureDensity: Number(textureDensityInput.value),
+    textureHeights: getTextureHeightsFromLayerSlider(),
+    textures: TEXTURE_URLS,
+    pbrTextures,
+    normalStrength: 1.0,
+    onHeightmapChange: refreshHeightmapPreview,
+  });
+  scene.add(terrain.group);
 
-bindPanel();
-bindTextureDrop(terrain);
-refreshHeightmapPreview();
-resize();
-renderer.setAnimationLoop(animate);
+  painting = bindTerrainPainting(terrain, {
+    domElement: renderer.domElement,
+    camera,
+    raycaster,
+    pointer,
+    setControlsEnabled: (enabled) => {
+      controls.enabled = enabled;
+    },
+  });
+
+  bindPanel();
+  bindTextureDrop(terrain);
+  refreshHeightmapPreview();
+  resize();
+  renderer.setAnimationLoop(animate);
+}
+
+init().catch(console.error);
 
 function bindPanel() {
   window.addEventListener('resize', resize);
@@ -124,11 +155,8 @@ function bindPanel() {
     syncWaterControls();
   });
 
-  bindRange(waterLevelInput, waterLevelValue, (value) => {
-    terrain.setWaterLevel(value);
-    return `${terrain.waterLevel.toFixed(1)}m`;
-  });
-
+  bindLayerSlider();
+  syncLayerSlider();
   syncWaterControls();
 
   bindRange(textureDensityInput, textureDensityValue, (value) => {
@@ -146,29 +174,9 @@ function bindPanel() {
     return terrain.hexTileContrast.toFixed(2);
   });
 
-  bindRange(sandMaxInput, sandMaxValue, (value) => {
-    terrain.setTextureHeights({ sandMax: value });
-    return `${value.toFixed(1)}m`;
-  });
-
-  bindRange(grassStartInput, grassStartValue, (value) => {
-    terrain.setTextureHeights({ grassStart: value });
-    return `${value.toFixed(1)}m`;
-  });
-
-  bindRange(grassEndInput, grassEndValue, (value) => {
-    terrain.setTextureHeights({ grassEnd: value });
-    return `${value.toFixed(1)}m`;
-  });
-
-  bindRange(rockStartInput, rockStartValue, (value) => {
-    terrain.setTextureHeights({ rockStart: value });
-    return `${value.toFixed(1)}m`;
-  });
-
-  bindRange(snowStartInput, snowStartValue, (value) => {
-    terrain.setTextureHeights({ snowStart: value });
-    return `${value.toFixed(1)}m`;
+  bindRange(terrainAOIntensityInput, terrainAOIntensityValue, (value) => {
+    terrain.setTerrainAOIntensity(value);
+    return `${Math.round(value * 100)}%`;
   });
 
   modeButtons.forEach((button) => {
@@ -205,8 +213,108 @@ function bindPanel() {
 
 function syncWaterControls() {
   const enabled = terrain.waterEnabled;
-  waterLevelInput.disabled = !enabled;
-  waterLevelInput.closest('.water-controls')?.classList.toggle('is-disabled', !enabled);
+  waterEnabledInput.closest('.water-controls')?.classList.toggle('is-disabled', !enabled);
+  layerSlider.classList.toggle('water-disabled', !enabled);
+}
+
+function getTextureHeightsFromLayerSlider() {
+  return {
+    sandMax: layerHeights.grass,
+    grassStart: layerHeights.grass,
+    grassEnd: layerHeights.rock,
+    rockStart: layerHeights.rock,
+    snowStart: layerHeights.snow,
+  };
+}
+
+function heightToPercent(value) {
+  return ((value - layerRange.min) / (layerRange.max - layerRange.min)) * 100;
+}
+
+function heightFromPointer(clientX) {
+  const rect = layerSlider.querySelector('.layer-slider-track').getBoundingClientRect();
+  const t = THREE.MathUtils.clamp((clientX - rect.left) / rect.width, 0, 1);
+  const raw = layerRange.min + t * (layerRange.max - layerRange.min);
+  return Math.round(raw * 2) / 2;
+}
+
+function clampLayerHeight(layer, value) {
+  const index = LAYER_ORDER.indexOf(layer);
+  const previous = LAYER_ORDER[index - 1];
+  const next = LAYER_ORDER[index + 1];
+  const min = previous ? layerHeights[previous] + LAYER_GAP : layerRange.min;
+  const max = next ? layerHeights[next] - LAYER_GAP : layerRange.max;
+  return THREE.MathUtils.clamp(value, min, max);
+}
+
+function applyLayerHeights() {
+  terrain.setWaterLevel(layerHeights.water);
+  terrain.setTextureHeights(getTextureHeightsFromLayerSlider());
+  syncLayerSlider();
+}
+
+function syncLayerSlider() {
+  for (const handle of layerHandles) {
+    const layer = handle.dataset.layer;
+    const value = layerHeights[layer];
+    handle.style.left = `${heightToPercent(value)}%`;
+    handle.setAttribute('aria-valuemin', String(layerRange.min));
+    handle.setAttribute('aria-valuemax', String(layerRange.max));
+    handle.setAttribute('aria-valuenow', value.toFixed(1));
+  }
+
+  const waterPct = heightToPercent(layerHeights.water);
+  const grassPct = heightToPercent(layerHeights.grass);
+  const rockPct = heightToPercent(layerHeights.rock);
+  const snowPct = heightToPercent(layerHeights.snow);
+  layerGradient.style.background = `linear-gradient(90deg,
+    #1f8aa5 0%, #1f8aa5 ${waterPct}%,
+    #d8c995 ${waterPct}%, #d8c995 ${grassPct}%,
+    #6d8b35 ${grassPct}%, #6d8b35 ${rockPct}%,
+    #8c928f ${rockPct}%, #8c928f ${snowPct}%,
+    #f2f5f4 ${snowPct}%, #f2f5f4 100%)`;
+
+  waterLevelValue.textContent = `${layerHeights.water.toFixed(1)}m`;
+  waterLayerValue.textContent = `${layerHeights.water.toFixed(1)}m`;
+  grassStartValue.textContent = `${layerHeights.grass.toFixed(1)}m`;
+  rockStartValue.textContent = `${layerHeights.rock.toFixed(1)}m`;
+  snowStartValue.textContent = `${layerHeights.snow.toFixed(1)}m`;
+}
+
+function bindLayerSlider() {
+  const moveLayer = (layer, clientX) => {
+    layerHeights[layer] = clampLayerHeight(layer, heightFromPointer(clientX));
+    applyLayerHeights();
+  };
+
+  for (const handle of layerHandles) {
+    handle.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      moveLayer(handle.dataset.layer, event.clientX);
+    });
+
+    handle.addEventListener('pointermove', (event) => {
+      if (handle.hasPointerCapture(event.pointerId)) {
+        moveLayer(handle.dataset.layer, event.clientX);
+      }
+    });
+
+    handle.addEventListener('keydown', (event) => {
+      const layer = handle.dataset.layer;
+      const step = event.shiftKey ? 2 : 0.5;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+        layerHeights[layer] = clampLayerHeight(layer, layerHeights[layer] - step);
+        applyLayerHeights();
+        event.preventDefault();
+      }
+      if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+        layerHeights[layer] = clampLayerHeight(layer, layerHeights[layer] + step);
+        applyLayerHeights();
+        event.preventDefault();
+      }
+    });
+  }
 }
 
 function bindRange(input, label, onInput) {

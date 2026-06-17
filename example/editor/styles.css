@@ -157,6 +157,22 @@ input[type="range"] {
   accent-color: #8bd5ff;
 }
 
+select {
+  width: 100%;
+  min-height: 2.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef5ff;
+  font: inherit;
+  font-weight: 650;
+  padding: 0 0.65rem;
+}
+
+select option {
+  color: #15202d;
+}
+
 .toggle-label {
   display: inline-flex;
   align-items: center;
@@ -173,14 +189,84 @@ input[type="range"] {
   accent-color: #8bd5ff;
 }
 
-.water-controls.is-disabled label[for="water-level"],
-.water-controls.is-disabled #water-level-value {
+.control-note {
+  margin: 0.25rem 0 0;
+  color: #9eacc0;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.water-controls.is-disabled #water-level-value,
+.water-controls.is-disabled .control-note {
   opacity: 0.45;
 }
 
-.water-controls.is-disabled input[type="range"] {
-  opacity: 0.35;
-  pointer-events: none;
+.layer-slider {
+  margin: 0.8rem 0 0.55rem;
+  padding: 0.55rem 0.35rem 0.7rem;
+  touch-action: none;
+}
+
+.layer-slider-track {
+  position: relative;
+  height: 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.layer-slider-gradient {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f8aa5 0%, #d8c995 40%, #6d8b35 55%, #aab0ae 80%, #f2f5f4 100%);
+  opacity: 0.95;
+}
+
+.layer-handle {
+  position: absolute;
+  top: 50%;
+  min-height: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  overflow: visible;
+  border-radius: 999px;
+  border: 2px solid #f6fbff;
+  background: #15202d;
+  color: transparent;
+  font-size: 0;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0.25rem 0.7rem rgba(0, 0, 0, 0.35);
+  z-index: 2;
+}
+
+.layer-handle:hover,
+.layer-handle:focus-visible {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.layer-handle.water { background: #1f8aa5; }
+.layer-handle.grass { background: #6d8b35; }
+.layer-handle.rock { background: #8c928f; }
+.layer-handle.snow { background: #f2f5f4; }
+
+.layer-handle span {
+  display: none;
+}
+
+.layer-readouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.65rem;
+  color: #b9c6d8;
+  font-size: 0.76rem;
+}
+
+.layer-readouts strong {
+  color: #eef5ff;
 }
 
 .heightmap-card {

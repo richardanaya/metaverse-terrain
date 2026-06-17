@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Metaverse Terrain Editor</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=2" />
     <script type="importmap">
       {
         "imports": {
@@ -51,8 +51,9 @@
             <input id="water-enabled" type="checkbox" checked />
             <span>Water</span>
           </label>
-          <label for="water-level">Water Level <span id="water-level-value">28.0m</span></label>
-          <input id="water-level" type="range" min="0" max="52" step="0.5" value="28" />
+          <label>Water Level <span id="water-level-value">21.5m</span></label>
+          <p class="control-note">Controlled by the Layer Heights slider.</p>
+
         </div>
 
         <div class="control-group">
@@ -66,24 +67,38 @@
 
           <label class="sub-label" for="hex-tile-contrast">Hex Contrast <span id="hex-tile-contrast-value">0.75</span></label>
           <input id="hex-tile-contrast" type="range" min="0.5" max="0.95" step="0.01" value="0.75" />
+
+          <label class="sub-label" for="terrain-ao-intensity">Land AO Intensity <span id="terrain-ao-intensity-value">100%</span></label>
+          <input id="terrain-ao-intensity" type="range" min="0" max="2" step="0.01" value="1" />
         </div>
 
         <div class="control-group">
-          <label>Texture Heights</label>
-          <label class="sub-label" for="sand-max">Sand fades above <span id="sand-max-value">10.0m</span></label>
-          <input id="sand-max" type="range" min="-12" max="52" step="0.5" value="10" />
-
-          <label class="sub-label" for="grass-start">Grass starts <span id="grass-start-value">-8.0m</span></label>
-          <input id="grass-start" type="range" min="-12" max="52" step="0.5" value="-8" />
-
-          <label class="sub-label" for="grass-end">Grass fades above <span id="grass-end-value">52.0m</span></label>
-          <input id="grass-end" type="range" min="-12" max="52" step="0.5" value="52" />
-
-          <label class="sub-label" for="rock-start">Rock starts <span id="rock-start-value">46.0m</span></label>
-          <input id="rock-start" type="range" min="-12" max="52" step="0.5" value="46" />
-
-          <label class="sub-label" for="snow-start">Snow starts <span id="snow-start-value">50.0m</span></label>
-          <input id="snow-start" type="range" min="-12" max="52" step="0.5" value="50" />
+          <label>Layer Heights</label>
+          <div
+            id="layer-slider"
+            class="layer-slider"
+            data-min="0"
+            data-max="40"
+            data-water="21.5"
+            data-grass="22.5"
+            data-rock="30"
+            data-snow="36"
+            aria-label="Terrain layer height thresholds"
+          >
+            <div class="layer-slider-track">
+              <div class="layer-slider-gradient"></div>
+              <button class="layer-handle water" type="button" role="slider" data-layer="water" aria-label="Water level"><span>Water</span></button>
+              <button class="layer-handle grass" type="button" role="slider" data-layer="grass" aria-label="Grass starts"><span>Grass</span></button>
+              <button class="layer-handle rock" type="button" role="slider" data-layer="rock" aria-label="Rock starts"><span>Rock</span></button>
+              <button class="layer-handle snow" type="button" role="slider" data-layer="snow" aria-label="Snow starts"><span>Snow</span></button>
+            </div>
+          </div>
+          <div class="layer-readouts">
+            <span>Water <strong id="water-layer-value">21.5m</strong></span>
+            <span>Grass <strong id="grass-start-value">22.5m</strong></span>
+            <span>Rock <strong id="rock-start-value">30.0m</strong></span>
+            <span>Snow <strong id="snow-start-value">36.0m</strong></span>
+          </div>
         </div>
 
         <div class="control-group two-up">
