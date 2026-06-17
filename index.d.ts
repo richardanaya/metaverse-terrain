@@ -12,6 +12,9 @@ export const DEFAULT_TEXTURE_DENSITY: number;
 export const DEFAULT_HEX_TILE_RATE: number;
 export const DEFAULT_HEX_TILE_CONTRAST: number;
 export const DEFAULT_SUN_DIRECTION: [number, number, number];
+export const DEFAULT_RENDER_SUBDIVISIONS: number;
+export const MAX_RENDER_SUBDIVISIONS: number;
+export const DEFAULT_TERRAIN_DETAIL_STRENGTH: number;
 export const TERRAIN_TEXTURE_LAYERS: readonly ['sand', 'grass', 'rock', 'snow', 'water'];
 export const PBR_CHANNELS: readonly ['metal', 'roughness', 'normal', 'ao'];
 export const DEFAULT_TEXTURE_HEIGHTS: TextureHeights;
@@ -92,6 +95,10 @@ export interface TerrainRegionOptions {
   waterShallowAlpha?: number;
   waterDeepAlpha?: number;
   waterMaxAlpha?: number;
+  /** Render-only mesh subdivisions between editable height samples. Default 1, max 4. Does not change heightMap. */
+  renderSubdivisions?: number;
+  /** Render-only procedural displacement strength. Default 0. Does not change heightMap. */
+  terrainDetailStrength?: number;
   textureDensity?: number;
   hexTileRate?: number;
   hexTileContrast?: number;
@@ -161,6 +168,8 @@ export class TerrainRegion {
   waterShallowAlpha: number;
   waterDeepAlpha: number;
   waterMaxAlpha: number;
+  renderSubdivisions: number;
+  terrainDetailStrength: number;
   textureDensity: number;
   hexTileRate: number;
   hexTileContrast: number;
@@ -213,6 +222,10 @@ export class TerrainRegion {
   setTextureDensity(density: number): this;
   setRegionSize(size: number): this;
   rebuildTerrainGeometry(): this;
+  /** Set render-only mesh subdivisions between editable height samples. Rebuilds terrain/water geometry. */
+  setRenderSubdivisions(subdivisions: number): this;
+  /** Set render-only procedural terrain displacement strength. Does not change heightMap. */
+  setTerrainDetailStrength(strength: number): this;
   setHexTileRate(rate: number): this;
   setHexTileContrast(contrast: number): this;
   setTextureHeights(heights: Partial<TextureHeights>): this;

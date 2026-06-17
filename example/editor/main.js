@@ -8,6 +8,8 @@ const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');
 const heightmapPreview = document.querySelector('#heightmap-preview');
 const regionSizeInput = document.querySelector('#region-size');
+const renderSubdivisionsInput = document.querySelector('#render-subdivisions');
+const terrainDetailStrengthInput = document.querySelector('#terrain-detail-strength');
 const brushSizeInput = document.querySelector('#brush-size');
 const brushStrengthInput = document.querySelector('#brush-strength');
 const waterEnabledInput = document.querySelector('#water-enabled');
@@ -19,6 +21,8 @@ const textureDensityInput = document.querySelector('#texture-density');
 const hexTileRateInput = document.querySelector('#hex-tile-rate');
 const hexTileContrastInput = document.querySelector('#hex-tile-contrast');
 const regionSizeValue = document.querySelector('#region-size-value');
+const renderSubdivisionsValue = document.querySelector('#render-subdivisions-value');
+const terrainDetailStrengthValue = document.querySelector('#terrain-detail-strength-value');
 const brushSizeValue = document.querySelector('#brush-size-value');
 const brushStrengthValue = document.querySelector('#brush-strength-value');
 const waterLevelValue = document.querySelector('#water-level-value');
@@ -121,6 +125,8 @@ async function init() {
   terrain = new TerrainRegion({
     seed: 29,
     regionSize: Number(regionSizeInput.value),
+    renderSubdivisions: Number(renderSubdivisionsInput.value),
+    terrainDetailStrength: Number(terrainDetailStrengthInput.value),
     waterLevel: layerHeights.water,
     terrainAOIntensity: Number(terrainAOIntensityInput.value),
     textureDensity: Number(textureDensityInput.value),
@@ -158,6 +164,16 @@ function bindPanel() {
   bindRange(regionSizeInput, regionSizeValue, (value) => {
     terrain.setRegionSize(value);
     return `${terrain.regionSize}m`;
+  });
+
+  bindRange(renderSubdivisionsInput, renderSubdivisionsValue, (value) => {
+    terrain.setRenderSubdivisions(value);
+    return `${terrain.renderSubdivisions}x`;
+  });
+
+  bindRange(terrainDetailStrengthInput, terrainDetailStrengthValue, (value) => {
+    terrain.setTerrainDetailStrength(value);
+    return `${terrain.terrainDetailStrength.toFixed(2)}m`;
   });
 
   bindRange(brushSizeInput, brushSizeValue, (value) => {

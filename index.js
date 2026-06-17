@@ -27,6 +27,9 @@ export const DEFAULT_TEXTURE_DENSITY = 20;
 export const DEFAULT_HEX_TILE_RATE = 0.5;
 export const DEFAULT_HEX_TILE_CONTRAST = 0.75;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
+export const DEFAULT_RENDER_SUBDIVISIONS = 1;
+export const MAX_RENDER_SUBDIVISIONS = 4;
+export const DEFAULT_TERRAIN_DETAIL_STRENGTH = 0;
 
 export const TERRAIN_TEXTURE_LAYERS = ['sand', 'grass', 'rock', 'snow', 'water'];
 export const PBR_CHANNELS = ['metal', 'roughness', 'normal', 'ao'];
@@ -62,6 +65,10 @@ function indexFor(x, z, samples) {
 
 function samplesForRegionSize(regionSize, sampleSpacing = DEFAULT_SAMPLE_SPACING) {
   return Math.round(regionSize / sampleSpacing) + 1;
+}
+
+function normalizeRenderSubdivisions(value = DEFAULT_RENDER_SUBDIVISIONS) {
+  return Math.max(1, Math.min(MAX_RENDER_SUBDIVISIONS, Math.round(value)));
 }
 
 function inferSamplesFromHeightMap(heightMap) {
@@ -268,24 +275,153 @@ async function loadPBRTexture(textureLoader, source) {
 
 // --- geometry ---
 
+function renderSamplesFor(samples, renderSubdivisions = DEFAULT_RENDER_SUBDIVISIONS) {
+  const subdivisions = normalizeRenderSubdivisions(renderSubdivisions);
+  return (samples - 1) * subdivisions + 1;
+}
+
+function sampleHeightMap(heightMap, samples, sampleX, sampleZ) {
+  const x = clamp(sampleX, 0, samples - 1);
+  const z = clamp(sampleZ, 0, samples - 1);
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const x1 = Math.min(samples - 1, x0 + 1);
+  const z1 = Math.min(samples - 1, z0 + 1);
+  const tx = x - x0;
+  const tz = z - z0;
+  const a = heightMap[indexFor(x0, z0, samples)];
+  const b = heightMap[indexFor(x1, z0, samples)];
+  const c = heightMap[indexFor(x0, z1, samples)];
+  const d = heightMap[indexFor(x1, z1, samples)];
+  return lerp(lerp(a, b, tx), lerp(c, d, tx), tz);
+}
+
+function estimateHeightNormalY(heightMap, options, sampleX, sampleZ) {
+  const { samples, regionSize } = options;
+  const step = regionSize / (samples - 1);
+  const hL = sampleHeightMap(heightMap, samples, sampleX - 1, sampleZ);
+  const hR = sampleHeightMap(heightMap, samples, sampleX + 1, sampleZ);
+  const hD = sampleHeightMap(heightMap, samples, sampleX, sampleZ - 1);
+  const hU = sampleHeightMap(heightMap, samples, sampleX, sampleZ + 1);
+  const dx = (hR - hL) / (step * 2);
+  const dz = (hU - hD) / (step * 2);
+  return 1 / Math.hypot(dx, 1, dz);
+}
+
+function terrainHash2(x, z, seed) {
+  const n = Math.sin(x * 127.1 + z * 311.7 + seed * 17.17) * 43758.5453123;
+  return n - Math.floor(n);
+}
+
+function terrainValueNoise(x, z, seed) {
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const tx = x - x0;
+  const tz = z - z0;
+  const sx = tx * tx * (3 - 2 * tx);
+  const sz = tz * tz * (3 - 2 * tz);
+  const a = terrainHash2(x0, z0, seed);
+  const b = terrainHash2(x0 + 1, z0, seed);
+  const c = terrainHash2(x0, z0 + 1, seed);
+  const d = terrainHash2(x0 + 1, z0 + 1, seed);
+  return lerp(lerp(a, b, sx), lerp(c, d, sx), sz);
+}
+
+function terrainFBM(x, z, seed, octaves = 3) {
+  let value = 0;
+  let amplitude = 0.5;
+  let frequency = 1;
+  let totalAmplitude = 0;
+  for (let octave = 0; octave < octaves; octave += 1) {
+    value += terrainValueNoise(x * frequency, z * frequency, seed + octave * 19.19) * amplitude;
+    totalAmplitude += amplitude;
+    amplitude *= 0.5;
+    frequency *= 2;
+  }
+  return value / totalAmplitude;
+}
+
+function terrainLayerWeightsAt(height, normalY, options) {
+  const textureHeights = options.textureHeights ?? DEFAULT_TEXTURE_HEIGHTS;
+  const blendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
+  const moisture = options.moisture ?? 0.5;
+  const slope = clamp((1 - normalY) * 2.4, 0, 1);
+  const wetEdge = (1 - smoothstep(options.waterLevel - 0.4, options.waterLevel + 2.4, height)) * (options.waterEnabled ? 1 : 0);
+  const snowStart = textureHeights.snowStart - (moisture - 0.5) * 4;
+
+  let sandWeight = 1 - smoothstep(textureHeights.sandMax - blendWidth, textureHeights.sandMax, height);
+  let grassWeight = smoothstep(textureHeights.grassStart - blendWidth, textureHeights.grassStart + blendWidth, height)
+    * (1 - smoothstep(textureHeights.grassEnd - blendWidth, textureHeights.grassEnd + blendWidth, height));
+  let rockWeight = smoothstep(textureHeights.rockStart - blendWidth, textureHeights.rockStart + blendWidth, height) + slope * 0.35;
+  let snowWeight = smoothstep(snowStart - blendWidth, snowStart + blendWidth, height) * (1 - slope * 0.25);
+
+  sandWeight += wetEdge * 0.9;
+  grassWeight *= 1 + slope * 0.75;
+  sandWeight *= 1 - slope * 0.25;
+
+  const weights = [Math.max(0.001, sandWeight), Math.max(0.001, grassWeight), Math.max(0.001, rockWeight), Math.max(0.001, snowWeight)];
+  const total = weights[0] + weights[1] + weights[2] + weights[3];
+  return weights.map((weight) => weight / total);
+}
+
+function terrainDetailDisplacement(worldX, worldZ, height, normalY, options) {
+  const strength = options.terrainDetailStrength ?? DEFAULT_TERRAIN_DETAIL_STRENGTH;
+  if (strength <= 0) return 0;
+
+  const seed = options.seed ?? 0;
+  const slope = clamp((1 - normalY) * 2.4, 0, 1);
+  const [sandWeight, grassWeight, rockWeight, snowWeight] = terrainLayerWeightsAt(height, normalY, options);
+
+  const sandRipples = (
+    Math.sin(worldX * 0.68 + worldZ * 0.18 + seed * 0.07) * 0.12
+    + Math.sin(worldX * 1.24 - worldZ * 0.31 + seed * 0.13) * 0.04
+  ) * (1 - slope * 0.5);
+
+  const grassNoise = (terrainFBM(worldX * 0.18, worldZ * 0.18, seed + 7, 3) - 0.5) * 0.32;
+  const rockRidge = (1 - Math.abs(terrainFBM(worldX * 0.32 + 23, worldZ * 0.32 - 19, seed + 13, 4) * 2 - 1)) * 1.05 - 0.28;
+  const snowSoft = (terrainFBM(worldX * 0.11 - 31, worldZ * 0.11 + 17, seed + 29, 2) - 0.5) * 0.12;
+
+  return strength * (
+    sandRipples * sandWeight
+    + grassNoise * grassWeight
+    + rockRidge * rockWeight * (0.4 + slope * 0.9)
+    + snowSoft * snowWeight
+  );
+}
+
+function evaluateTerrainRenderHeight(heightMap, options, renderX, renderZ, renderSamples) {
+  const { samples, regionSize } = options;
+  const halfRegion = regionSize / 2;
+  const tX = renderX / (renderSamples - 1);
+  const tZ = renderZ / (renderSamples - 1);
+  const sampleX = tX * (samples - 1);
+  const sampleZ = tZ * (samples - 1);
+  const worldX = tX * regionSize - halfRegion;
+  const worldZ = tZ * regionSize - halfRegion;
+  const baseHeight = sampleHeightMap(heightMap, samples, sampleX, sampleZ);
+  const normalY = estimateHeightNormalY(heightMap, options, sampleX, sampleZ);
+  return baseHeight + terrainDetailDisplacement(worldX, worldZ, baseHeight, normalY, options);
+}
+
 function createTerrainGeometry(heightMap, options) {
-  const { regionSize, samples } = options;
+  const { regionSize, samples, renderSubdivisions = DEFAULT_RENDER_SUBDIVISIONS } = options;
+  const renderSamples = renderSamplesFor(samples, renderSubdivisions);
   const halfRegion = regionSize / 2;
   const geometry = new THREE.BufferGeometry();
-  const vertexCount = samples * samples;
+  const vertexCount = renderSamples * renderSamples;
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
-  const indices = new Uint32Array((samples - 1) * (samples - 1) * 6);
-  const step = regionSize / (samples - 1);
+  const indices = new Uint32Array((renderSamples - 1) * (renderSamples - 1) * 6);
+  const step = regionSize / (renderSamples - 1);
 
-  for (let z = 0; z < samples; z += 1) {
-    for (let x = 0; x < samples; x += 1) {
-      const index = indexFor(x, z, samples);
+  for (let z = 0; z < renderSamples; z += 1) {
+    for (let x = 0; x < renderSamples; x += 1) {
+      const index = indexFor(x, z, renderSamples);
       const positionIndex = index * 3;
       const uvIndex = index * 2;
 
       positions[positionIndex] = x * step - halfRegion;
-      positions[positionIndex + 1] = heightMap[index];
+      positions[positionIndex + 1] = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
       positions[positionIndex + 2] = z * step - halfRegion;
       uvs[uvIndex] = (x * step) / DEFAULT_REGION_SIZE;
       uvs[uvIndex + 1] = (z * step) / DEFAULT_REGION_SIZE;
@@ -293,12 +429,12 @@ function createTerrainGeometry(heightMap, options) {
   }
 
   let indexPointer = 0;
-  for (let z = 0; z < samples - 1; z += 1) {
-    for (let x = 0; x < samples - 1; x += 1) {
-      const a = indexFor(x, z, samples);
-      const b = indexFor(x + 1, z, samples);
-      const c = indexFor(x, z + 1, samples);
-      const d = indexFor(x + 1, z + 1, samples);
+  for (let z = 0; z < renderSamples - 1; z += 1) {
+    for (let x = 0; x < renderSamples - 1; x += 1) {
+      const a = indexFor(x, z, renderSamples);
+      const b = indexFor(x + 1, z, renderSamples);
+      const c = indexFor(x, z + 1, renderSamples);
+      const d = indexFor(x + 1, z + 1, renderSamples);
 
       indices[indexPointer] = a;
       indices[indexPointer + 1] = c;
@@ -313,44 +449,47 @@ function createTerrainGeometry(heightMap, options) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.userData.renderSamples = renderSamples;
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
 }
 
 function createWaterGeometry(heightMap, options) {
-  const { regionSize, samples, waterLevel } = options;
+  const { regionSize, samples, waterLevel, renderSubdivisions = DEFAULT_RENDER_SUBDIVISIONS } = options;
+  const renderSamples = renderSamplesFor(samples, renderSubdivisions);
   const halfRegion = regionSize / 2;
   const geometry = new THREE.BufferGeometry();
-  const vertexCount = samples * samples;
+  const vertexCount = renderSamples * renderSamples;
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
   const waterDepth = new Float32Array(vertexCount);
-  const indices = new Uint32Array((samples - 1) * (samples - 1) * 6);
-  const step = regionSize / (samples - 1);
+  const indices = new Uint32Array((renderSamples - 1) * (renderSamples - 1) * 6);
+  const step = regionSize / (renderSamples - 1);
 
-  for (let z = 0; z < samples; z += 1) {
-    for (let x = 0; x < samples; x += 1) {
-      const index = indexFor(x, z, samples);
+  for (let z = 0; z < renderSamples; z += 1) {
+    for (let x = 0; x < renderSamples; x += 1) {
+      const index = indexFor(x, z, renderSamples);
       const positionIndex = index * 3;
       const uvIndex = index * 2;
+      const terrainHeight = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
 
       positions[positionIndex] = x * step - halfRegion;
       positions[positionIndex + 1] = 0;
       positions[positionIndex + 2] = z * step - halfRegion;
       uvs[uvIndex] = (x * step) / DEFAULT_REGION_SIZE;
       uvs[uvIndex + 1] = (z * step) / DEFAULT_REGION_SIZE;
-      waterDepth[index] = waterLevel - heightMap[index];
+      waterDepth[index] = waterLevel - terrainHeight;
     }
   }
 
   let indexPointer = 0;
-  for (let z = 0; z < samples - 1; z += 1) {
-    for (let x = 0; x < samples - 1; x += 1) {
-      const a = indexFor(x, z, samples);
-      const b = indexFor(x + 1, z, samples);
-      const c = indexFor(x, z + 1, samples);
-      const d = indexFor(x + 1, z + 1, samples);
+  for (let z = 0; z < renderSamples - 1; z += 1) {
+    for (let x = 0; x < renderSamples - 1; x += 1) {
+      const a = indexFor(x, z, renderSamples);
+      const b = indexFor(x + 1, z, renderSamples);
+      const c = indexFor(x, z + 1, renderSamples);
+      const d = indexFor(x + 1, z + 1, renderSamples);
 
       indices[indexPointer] = a;
       indices[indexPointer + 1] = c;
@@ -366,6 +505,7 @@ function createWaterGeometry(heightMap, options) {
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geometry.setAttribute('waterDepth', new THREE.BufferAttribute(waterDepth, 1));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.userData.renderSamples = renderSamples;
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -401,29 +541,37 @@ function generateHeightMap(heightMap, options) {
   }
 }
 
-function updateWaterDepthData(heightMap, waterMesh, waterLevel) {
+function updateWaterDepthData(heightMap, waterMesh, options) {
   const depthAttribute = waterMesh?.geometry?.attributes?.waterDepth;
   if (!depthAttribute) return;
+  const renderSamples = waterMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
 
-  for (let index = 0; index < heightMap.length; index += 1) {
-    depthAttribute.array[index] = waterLevel - heightMap[index];
+  for (let z = 0; z < renderSamples; z += 1) {
+    for (let x = 0; x < renderSamples; x += 1) {
+      const index = indexFor(x, z, renderSamples);
+      depthAttribute.array[index] = options.waterLevel - evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+    }
   }
 
   depthAttribute.needsUpdate = true;
 }
 
-function syncHeightMapToGeometry(heightMap, terrainMesh, waterMesh, waterLevel) {
+function syncHeightMapToGeometry(heightMap, terrainMesh, waterMesh, options) {
   const position = terrainMesh.geometry.attributes.position;
+  const renderSamples = terrainMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
 
-  for (let index = 0; index < heightMap.length; index += 1) {
-    position.array[index * 3 + 1] = heightMap[index];
+  for (let z = 0; z < renderSamples; z += 1) {
+    for (let x = 0; x < renderSamples; x += 1) {
+      const index = indexFor(x, z, renderSamples);
+      position.array[index * 3 + 1] = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+    }
   }
 
   position.needsUpdate = true;
   terrainMesh.geometry.computeVertexNormals();
   terrainMesh.geometry.attributes.normal.needsUpdate = true;
   terrainMesh.geometry.computeBoundingSphere();
-  updateWaterDepthData(heightMap, waterMesh, waterLevel);
+  updateWaterDepthData(heightMap, waterMesh, options);
 }
 
 function getHeightmapStats(heightMap) {
@@ -1703,6 +1851,8 @@ export class TerrainRegion {
     this.waterShallowAlpha = options.waterShallowAlpha ?? 0.5;
     this.waterDeepAlpha = options.waterDeepAlpha ?? 0.94;
     this.waterMaxAlpha = options.waterMaxAlpha ?? 0.97;
+    this.renderSubdivisions = normalizeRenderSubdivisions(options.renderSubdivisions);
+    this.terrainDetailStrength = Math.max(0, options.terrainDetailStrength ?? DEFAULT_TERRAIN_DETAIL_STRENGTH);
     this.textureDensity = options.textureDensity ?? DEFAULT_TEXTURE_DENSITY;
     this.hexTileRate = options.hexTileRate ?? DEFAULT_HEX_TILE_RATE;
     this.hexTileContrast = options.hexTileContrast ?? DEFAULT_HEX_TILE_CONTRAST;
@@ -1774,11 +1924,23 @@ export class TerrainRegion {
     return this.regionSize / 2;
   }
 
-  createTerrainMesh() {
-    const geometry = createTerrainGeometry(this.heightMap, {
+  getRenderGeometryOptions() {
+    return {
       regionSize: this.regionSize,
       samples: this.samples,
-    });
+      renderSubdivisions: this.renderSubdivisions,
+      terrainDetailStrength: this.terrainDetailStrength,
+      waterLevel: this.waterLevel,
+      waterEnabled: this.waterEnabled,
+      textureHeights: this.textureHeights,
+      textureBlendWidth: this.textureBlendWidth,
+      moisture: this.moisture,
+      seed: this.seed,
+    };
+  }
+
+  createTerrainMesh() {
+    const geometry = createTerrainGeometry(this.heightMap, this.getRenderGeometryOptions());
     const material = createTerrainMaterial(this.textureLoader, {
       textures: this.textures,
       textureDensity: this.textureDensity,
@@ -1806,11 +1968,7 @@ export class TerrainRegion {
   }
 
   createWaterMesh() {
-    const geometry = createWaterGeometry(this.heightMap, {
-      regionSize: this.regionSize,
-      samples: this.samples,
-      waterLevel: this.waterLevel,
-    });
+    const geometry = createWaterGeometry(this.heightMap, this.getRenderGeometryOptions());
     const terrainTextures = this.terrainMesh?.material?.userData?.textures ?? null;
     const material = createWaterMaterial(this.textureLoader, {
       textures: this.textures,
@@ -1875,6 +2033,13 @@ export class TerrainRegion {
   setWaterEnabled(enabled) {
     this.waterEnabled = Boolean(enabled);
     this.waterMesh.visible = this.waterEnabled;
+
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uWaterEnabled) {
+      shader.uniforms.uWaterEnabled.value = this.waterEnabled ? 1 : 0;
+    }
+
+    this.sync();
     return this;
   }
 
@@ -1966,15 +2131,8 @@ export class TerrainRegion {
     this.terrainMesh.geometry.dispose();
     this.waterMesh.geometry.dispose();
 
-    this.terrainMesh.geometry = createTerrainGeometry(this.heightMap, {
-      regionSize: this.regionSize,
-      samples: this.samples,
-    });
-    this.waterMesh.geometry = createWaterGeometry(this.heightMap, {
-      regionSize: this.regionSize,
-      samples: this.samples,
-      waterLevel: this.waterLevel,
-    });
+    this.terrainMesh.geometry = createTerrainGeometry(this.heightMap, this.getRenderGeometryOptions());
+    this.waterMesh.geometry = createWaterGeometry(this.heightMap, this.getRenderGeometryOptions());
 
     if (this.boundaryFrame) {
       this.group.remove(this.boundaryFrame);
@@ -1984,6 +2142,21 @@ export class TerrainRegion {
       this.group.add(this.boundaryFrame);
     }
 
+    this.sync();
+    return this;
+  }
+
+  setRenderSubdivisions(subdivisions) {
+    const nextSubdivisions = normalizeRenderSubdivisions(subdivisions);
+    if (nextSubdivisions === this.renderSubdivisions) return this;
+
+    this.renderSubdivisions = nextSubdivisions;
+    this.rebuildTerrainGeometry();
+    return this;
+  }
+
+  setTerrainDetailStrength(strength) {
+    this.terrainDetailStrength = Math.max(0, strength);
     this.sync();
     return this;
   }
@@ -2013,6 +2186,7 @@ export class TerrainRegion {
   setTextureHeights(heights) {
     this.textureHeights = { ...this.textureHeights, ...heights };
     this.syncTextureHeightUniforms();
+    this.sync();
     return this;
   }
 
@@ -2129,7 +2303,7 @@ export class TerrainRegion {
   }
 
   sync() {
-    syncHeightMapToGeometry(this.heightMap, this.terrainMesh, this.waterMesh, this.waterLevel);
+    syncHeightMapToGeometry(this.heightMap, this.terrainMesh, this.waterMesh, this.getRenderGeometryOptions());
     return this;
   }
 
@@ -2319,6 +2493,7 @@ export class TerrainRegion {
     if (shader?.uniforms?.uMoisture) {
       shader.uniforms.uMoisture.value = this.moisture;
     }
+    this.sync();
     return this;
   }
 

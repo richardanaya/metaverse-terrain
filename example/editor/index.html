@@ -28,6 +28,14 @@
         </div>
 
         <div class="control-group">
+          <label for="render-subdivisions">Terrain Mesh <span id="render-subdivisions-value">1x</span></label>
+          <input id="render-subdivisions" type="range" min="1" max="4" step="1" value="1" />
+
+          <label class="sub-label" for="terrain-detail-strength">Detail Strength <span id="terrain-detail-strength-value">0.00m</span></label>
+          <input id="terrain-detail-strength" type="range" min="0" max="2" step="0.05" value="0" />
+        </div>
+
+        <div class="control-group">
           <label>Brush Mode</label>
           <div class="segmented" role="group" aria-label="Brush mode">
             <button class="active" type="button" data-mode="raise">Raise</button>
