@@ -121,6 +121,18 @@ export interface TerrainRegionOptions {
   windSpeed?: number;
   /** Water darkness: 0 = pristine beach, 0.5 = ocean, 1 = swamp. Controls color tint, absorption, and opacity. */
   waterDarkness?: number;
+  /** Enable triplanar texture mapping on steep slopes. Default true. */
+  triplanarEnabled?: boolean;
+  /** Enable wet sand darkening and shininess near shoreline. Default true. */
+  wetSandEnabled?: boolean;
+  /** Enable sun-coupled snow sparkles. Default true. */
+  snowSparklesEnabled?: boolean;
+  /** Enable noise-perturbed layer transitions. Default true. */
+  noisePerturbEnabled?: boolean;
+  /** Enable geometry cavity AO from heightfield gradient. Default true. */
+  cavityAOEnabled?: boolean;
+  /** Moisture: 0 = dry, 0.5 = normal, 1 = wet. Tints grass, shifts snow line. */
+  moisture?: number;
 }
 
 export interface PaintOptions {
@@ -173,6 +185,12 @@ export class TerrainRegion {
   windDirection: [number, number];
   windSpeed: number;
   waterDarkness: number;
+  triplanarEnabled: boolean;
+  wetSandEnabled: boolean;
+  snowSparklesEnabled: boolean;
+  noisePerturbEnabled: boolean;
+  cavityAOEnabled: boolean;
+  moisture: number;
 
   constructor(options: TerrainRegionOptions);
 
@@ -219,6 +237,18 @@ export class TerrainRegion {
   setWindSpeed(speed: number): this;
   /** Set water darkness (0 = pristine beach, 0.5 = ocean, 1 = swamp). */
   setWaterDarkness(darkness: number): this;
+  /** Toggle triplanar texture mapping on steep slopes. */
+  setTriplanarEnabled(enabled: boolean): this;
+  /** Toggle wet sand darkening and shininess near shoreline. */
+  setWetSandEnabled(enabled: boolean): this;
+  /** Toggle sun-coupled snow sparkles. */
+  setSnowSparklesEnabled(enabled: boolean): this;
+  /** Toggle noise-perturbed layer transitions. */
+  setNoisePerturbEnabled(enabled: boolean): this;
+  /** Toggle geometry cavity AO from heightfield gradient. */
+  setCavityAOEnabled(enabled: boolean): this;
+  /** Set moisture (0 = dry, 0.5 = normal, 1 = wet). Tints grass, shifts snow line. */
+  setMoisture(moisture: number): this;
 
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;

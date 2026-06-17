@@ -41,6 +41,13 @@ const windDirectionValue = document.querySelector('#wind-direction-value');
 const windSpeedValue = document.querySelector('#wind-speed-value');
 const waterDarknessInput = document.querySelector('#water-darkness');
 const waterDarknessValue = document.querySelector('#water-darkness-value');
+const triplanarEnabledInput = document.querySelector('#triplanar-enabled');
+const wetSandEnabledInput = document.querySelector('#wet-sand-enabled');
+const snowSparklesEnabledInput = document.querySelector('#snow-sparkles-enabled');
+const noisePerturbEnabledInput = document.querySelector('#noise-perturb-enabled');
+const cavityAOEnabledInput = document.querySelector('#cavity-ao-enabled');
+const moistureInput = document.querySelector('#moisture');
+const moistureValue = document.querySelector('#moisture-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
@@ -226,6 +233,21 @@ function bindPanel() {
     if (value < 0.6) return 'Ocean';
     if (value < 0.8) return 'Murky';
     return 'Swamp';
+  });
+
+  triplanarEnabledInput.addEventListener('change', () => terrain.setTriplanarEnabled(triplanarEnabledInput.checked));
+  wetSandEnabledInput.addEventListener('change', () => terrain.setWetSandEnabled(wetSandEnabledInput.checked));
+  snowSparklesEnabledInput.addEventListener('change', () => terrain.setSnowSparklesEnabled(snowSparklesEnabledInput.checked));
+  noisePerturbEnabledInput.addEventListener('change', () => terrain.setNoisePerturbEnabled(noisePerturbEnabledInput.checked));
+  cavityAOEnabledInput.addEventListener('change', () => terrain.setCavityAOEnabled(cavityAOEnabledInput.checked));
+
+  bindRange(moistureInput, moistureValue, (value) => {
+    terrain.setMoisture(value);
+    if (value < 0.2) return 'Arid';
+    if (value < 0.4) return 'Dry';
+    if (value < 0.6) return 'Normal';
+    if (value < 0.8) return 'Wet';
+    return 'Swampy';
   });
 
   modeButtons.forEach((button) => {

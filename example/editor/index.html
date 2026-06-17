@@ -94,6 +94,34 @@
         </div>
 
         <div class="control-group">
+          <label>Terrain Shading</label>
+          <div class="terrain-toggles">
+            <label class="toggle-label" for="triplanar-enabled">
+              <input id="triplanar-enabled" type="checkbox" checked />
+              <span>Triplanar</span>
+            </label>
+            <label class="toggle-label" for="wet-sand-enabled">
+              <input id="wet-sand-enabled" type="checkbox" checked />
+              <span>Wet Sand</span>
+            </label>
+            <label class="toggle-label" for="snow-sparkles-enabled">
+              <input id="snow-sparkles-enabled" type="checkbox" checked />
+              <span>Snow Sparkles</span>
+            </label>
+            <label class="toggle-label" for="noise-perturb-enabled">
+              <input id="noise-perturb-enabled" type="checkbox" checked />
+              <span>Noise Edges</span>
+            </label>
+            <label class="toggle-label" for="cavity-ao-enabled">
+              <input id="cavity-ao-enabled" type="checkbox" checked />
+              <span>Cavity AO</span>
+            </label>
+          </div>
+          <label class="sub-label" for="moisture">Moisture <span id="moisture-value">Normal</span></label>
+          <input id="moisture" type="range" min="0" max="1" step="0.01" value="0.5" />
+        </div>
+
+        <div class="control-group">
           <label>Layer Heights</label>
           <div
             id="layer-slider"

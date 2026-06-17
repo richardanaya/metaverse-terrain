@@ -646,6 +646,26 @@ const hexTilingGLSL = `
     W /= W.x + W.y + W.z;
     return W.x * c1 + W.y * c2 + W.z * c3;
   }
+
+  // Triplanar sampling: blend 3 world-space projections by normal dominance.
+  // Fixes stretched textures on vertical cliffs (heightfield faces). Each
+  // projection still goes through hex-tiling to avoid seams.
+  vec3 hexTileTriplanar(sampler2D tex, vec3 worldPos, vec3 worldNormal, float uvScale, float hexTileRate, float hexContrastR) {
+    vec3 nrm = normalize(worldNormal);
+    vec3 blend = pow(abs(nrm), vec3(4.0));
+    blend /= max(blend.x + blend.y + blend.z, 0.0001);
+
+    // XZ plane (top), XY plane (front), ZY plane (side)
+    vec2 uvXZ = worldPos.xz * uvScale;
+    vec2 uvXY = worldPos.xy * uvScale;
+    vec2 uvZY = worldPos.zy * uvScale;
+
+    vec3 cXZ = hexTileColor(tex, uvXZ, hexTileRate, hexContrastR);
+    vec3 cXY = hexTileColor(tex, uvXY, hexTileRate, hexContrastR);
+    vec3 cZY = hexTileColor(tex, uvZY, hexTileRate, hexContrastR);
+
+    return cXZ * blend.y + cXY * blend.z + cZY * blend.x;
+  }
 `;
 
 // --- Terrain material (MeshStandardMaterial + onBeforeCompile) ---
@@ -663,6 +683,13 @@ function createTerrainMaterial(textureLoader, options) {
     pbrTextures,
     normalStrength = 1.0,
     terrainAOIntensity = 1.0,
+    triplanarEnabled = true,
+    wetSandEnabled = true,
+    snowSparklesEnabled = true,
+    noisePerturbEnabled = true,
+    cavityAOEnabled = true,
+    moisture = 0.5,
+    sunDirection = new THREE.Vector3(...DEFAULT_SUN_DIRECTION),
   } = options;
 
   const sandTex = loadTerrainTexture(textureLoader, textures.sand);
@@ -713,6 +740,13 @@ function createTerrainMaterial(textureLoader, options) {
     shader.uniforms.uWaterLevel = { value: waterLevel };
     shader.uniforms.uWaterEnabled = { value: waterEnabled ? 1 : 0 };
     shader.uniforms.uTerrainAOIntensity = { value: terrainAOIntensity };
+    shader.uniforms.uTriplanarEnabled = { value: triplanarEnabled ? 1.0 : 0.0 };
+    shader.uniforms.uWetSandEnabled = { value: wetSandEnabled ? 1.0 : 0.0 };
+    shader.uniforms.uSnowSparklesEnabled = { value: snowSparklesEnabled ? 1.0 : 0.0 };
+    shader.uniforms.uNoisePerturbEnabled = { value: noisePerturbEnabled ? 1.0 : 0.0 };
+    shader.uniforms.uCavityAOEnabled = { value: cavityAOEnabled ? 1.0 : 0.0 };
+    shader.uniforms.uMoisture = { value: moisture };
+    shader.uniforms.uSunDirection = { value: sunDirection };
 
     // Add PBR texture uniforms if available
     if (hasPBR) {
@@ -729,6 +763,7 @@ function createTerrainMaterial(textureLoader, options) {
       varying float vTerrainHeight;
       varying vec3 vTerrainWorldNormal;
       varying vec2 vTerrainUv;
+      varying vec3 vTerrainWorldPos;
     `;
 
     const uniformDeclarations = `
@@ -757,19 +792,84 @@ function createTerrainMaterial(textureLoader, options) {
       uniform sampler2D uRockMRAO;
       uniform sampler2D uSnowMRAO;
       uniform float uNormalStrength;
+      uniform float uTriplanarEnabled;
+      uniform float uWetSandEnabled;
+      uniform float uSnowSparklesEnabled;
+      uniform float uNoisePerturbEnabled;
+      uniform float uCavityAOEnabled;
+      uniform float uMoisture;
+      uniform vec3 uSunDirection;
     `;
 
     const terrainBlendGLSL = `
+      // Cheap hash-based value noise for perturbing layer transitions.
+      float terrainHash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+      float terrainValueNoise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = terrainHash(i);
+        float b = terrainHash(i + vec2(1.0, 0.0));
+        float c = terrainHash(i + vec2(0.0, 1.0));
+        float d = terrainHash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+
+      // Perturb height to break up clean horizontal banding at layer transitions.
+      float perturbedHeight(float height, vec3 worldPos) {
+        if (uNoisePerturbEnabled < 0.5) return height;
+        float n = terrainValueNoise(worldPos.xz * 0.18) * 2.5 - 1.25;
+        return height + n;
+      }
+
+      // Cavity AO from procedural height gradient: sample noise at offset to
+      // approximate local concavity. Darkens valleys/gullies.
+      float terrainCavityAO(vec3 worldPos) {
+        if (uCavityAOEnabled < 0.5) return 1.0;
+        float here = terrainValueNoise(worldPos.xz * 0.08);
+        float dx = terrainValueNoise((worldPos.xz + vec2(1.5, 0.0)) * 0.08);
+        float dz = terrainValueNoise((worldPos.xz + vec2(0.0, 1.5)) * 0.08);
+        float concavity = max(0.0, (here - dx) + (here - dz)) * 2.0;
+        return 1.0 - clamp(concavity, 0.0, 0.6);
+      }
+
+      // Moisture shifts grass green->brown and lowers the snow line.
+      vec3 moistureTint(vec3 albedo, float height, vec4 weights) {
+        if (uMoisture < 0.5) return albedo;
+        float m = (uMoisture - 0.5) * 2.0;
+        vec3 brown = vec3(0.55, 0.45, 0.30);
+        vec3 lush = vec3(0.20, 0.45, 0.15);
+        vec3 grassTint = mix(vec3(1.0), lush, m);
+        albedo = mix(albedo, albedo * grassTint, weights.y * m);
+        albedo = mix(albedo, albedo * mix(vec3(1.0), brown, m), weights.x * m * 0.5);
+        return albedo;
+      }
+
+      // Snow sparkles: high-freq noise thresholded against sun-facing normal.
+      vec3 snowSparkles(vec3 albedo, vec3 worldNormal, vec3 worldPos) {
+        if (uSnowSparklesEnabled < 0.5) return albedo;
+        vec3 sunDir = normalize(uSunDirection);
+        float sunFacing = max(dot(normalize(worldNormal), sunDir), 0.0);
+        float sparkleN = terrainValueNoise(worldPos.xz * 90.0);
+        float sparkle = step(0.93, sparkleN) * smoothstep(0.3, 0.8, sunFacing);
+        return albedo + vec3(0.5) * sparkle;
+      }
+
       vec4 terrainLayerWeights(float terrainHeight, vec3 terrainWorldNormal) {
         vec3 geomNormal = normalize(terrainWorldNormal);
         float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
         float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, terrainHeight)) * uWaterEnabled;
 
+        // Moisture lowers the effective snow line so wetter climates snow earlier.
+        float snowStartEff = uSnowStart - (uMoisture - 0.5) * 4.0;
+
         float sandWeight = 1.0 - smoothstep(uSandMax - uBlendWidth, uSandMax, terrainHeight);
         float grassWeight = smoothstep(uGrassStart - uBlendWidth, uGrassStart + uBlendWidth, terrainHeight)
           * (1.0 - smoothstep(uGrassEnd - uBlendWidth, uGrassEnd + uBlendWidth, terrainHeight));
         float rockWeight = smoothstep(uRockStart - uBlendWidth, uRockStart + uBlendWidth, terrainHeight) + slope * 0.35;
-        float snowWeight = smoothstep(uSnowStart - uBlendWidth, uSnowStart + uBlendWidth, terrainHeight) * (1.0 - slope * 0.25);
+        float snowWeight = smoothstep(snowStartEff - uBlendWidth, snowStartEff + uBlendWidth, terrainHeight) * (1.0 - slope * 0.25);
 
         sandWeight += wetEdge * 0.9;
         grassWeight *= 1.0 + slope * 0.75;
@@ -780,9 +880,6 @@ function createTerrainMaterial(textureLoader, options) {
       }
 
       mat3 terrainTangentFrame(vec3 worldNormal) {
-        // Terrain UVs are aligned to world X/Z, so build a stable TBN from
-        // world axes instead of screen-space derivatives. This avoids
-        // camera-dependent triangular lighting artifacts on heightfield faces.
         vec3 nW = normalize(worldNormal);
         vec3 tW = vec3(1.0, 0.0, 0.0) - nW * dot(vec3(1.0, 0.0, 0.0), nW);
 
@@ -799,6 +896,15 @@ function createTerrainMaterial(textureLoader, options) {
         return mat3(tV, bV, nV);
       }
 
+      // Per-layer normal strength: rock strong, snow subtle, grass/sand medium.
+      float layerNormalStrength(vec4 weights) {
+        float rockScale = 1.2;
+        float snowScale = 0.4;
+        float grassScale = 0.8;
+        float sandScale = 0.6;
+        return weights.x * sandScale + weights.y * grassScale + weights.z * rockScale + weights.w * snowScale;
+      }
+
       vec3 terrainSampleNormal(vec4 weights) {
         vec3 n = vec3(0.0);
         n += (texture2D(uSandNormal, vTerrainUv * uTextureScale * 1.15).xyz * 2.0 - 1.0) * weights.x;
@@ -806,7 +912,8 @@ function createTerrainMaterial(textureLoader, options) {
         n += (texture2D(uRockNormal, vTerrainUv * uTextureScale * 0.82).xyz * 2.0 - 1.0) * weights.z;
         n += (texture2D(uSnowNormal, vTerrainUv * uTextureScale * 0.66).xyz * 2.0 - 1.0) * weights.w;
         n = normalize(n);
-        n.xy *= uNormalStrength;
+        float layerStrength = layerNormalStrength(weights) * uNormalStrength;
+        n.xy *= layerStrength;
         return normalize(vec3(n.xy, max(n.z, 0.001)));
       }
 
@@ -830,7 +937,8 @@ function createTerrainMaterial(textureLoader, options) {
       `#include <begin_vertex>
       vTerrainHeight = transformed.y;
       vTerrainWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-      vTerrainUv = uv;`
+      vTerrainUv = uv;
+      vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`
     );
 
 
@@ -841,17 +949,55 @@ function createTerrainMaterial(textureLoader, options) {
       vec2 terrainTiledUv = vTerrainUv * uTextureScale;
       vec3 geomNormal = normalize(vTerrainWorldNormal);
       float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
-      float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, vTerrainHeight)) * uWaterEnabled;
 
-      vec4 terrainWeights = terrainLayerWeights(vTerrainHeight, vTerrainWorldNormal);
+      // #4: Noise-perturbed height breaks up clean horizontal banding.
+      float effHeight = perturbedHeight(vTerrainHeight, vTerrainWorldPos);
 
-      // Hex-tiled albedo sampling
-      vec3 sandColor = hexTileColor(uSand, terrainTiledUv * 1.15, uHexTileRate, uHexContrastR);
-      vec3 grassColor = hexTileColor(uGrass, terrainTiledUv, uHexTileRate, uHexContrastR);
-      vec3 rockColor = hexTileColor(uRock, terrainTiledUv * 0.82, uHexTileRate, uHexContrastR);
-      vec3 snowColor = hexTileColor(uSnow, terrainTiledUv * 0.66, uHexTileRate, uHexContrastR);
+      vec4 terrainWeights = terrainLayerWeights(effHeight, vTerrainWorldNormal);
+
+      // #1: Triplanar mapping on steep slopes, regular sampling on flat ground.
+      float triplanarBlend = smoothstep(0.35, 0.7, slope) * uTriplanarEnabled;
+      vec3 sandColor;
+      vec3 grassColor;
+      vec3 rockColor;
+      vec3 snowColor;
+      if (triplanarBlend > 0.01) {
+        float tpScale = uTextureScale / 256.0;
+        vec3 tpSand = hexTileTriplanar(uSand, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 1.15, uHexTileRate, uHexContrastR);
+        vec3 tpGrass = hexTileTriplanar(uGrass, vTerrainWorldPos, vTerrainWorldNormal, tpScale, uHexTileRate, uHexContrastR);
+        vec3 tpRock = hexTileTriplanar(uRock, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.82, uHexTileRate, uHexContrastR);
+        vec3 tpSnow = hexTileTriplanar(uSnow, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.66, uHexTileRate, uHexContrastR);
+        vec3 flatSand = hexTileColor(uSand, terrainTiledUv * 1.15, uHexTileRate, uHexContrastR);
+        vec3 flatGrass = hexTileColor(uGrass, terrainTiledUv, uHexTileRate, uHexContrastR);
+        vec3 flatRock = hexTileColor(uRock, terrainTiledUv * 0.82, uHexTileRate, uHexContrastR);
+        vec3 flatSnow = hexTileColor(uSnow, terrainTiledUv * 0.66, uHexTileRate, uHexContrastR);
+        sandColor = mix(flatSand, tpSand, triplanarBlend);
+        grassColor = mix(flatGrass, tpGrass, triplanarBlend);
+        rockColor = mix(flatRock, tpRock, triplanarBlend);
+        snowColor = mix(flatSnow, tpSnow, triplanarBlend);
+      } else {
+        sandColor = hexTileColor(uSand, terrainTiledUv * 1.15, uHexTileRate, uHexContrastR);
+        grassColor = hexTileColor(uGrass, terrainTiledUv, uHexTileRate, uHexContrastR);
+        rockColor = hexTileColor(uRock, terrainTiledUv * 0.82, uHexTileRate, uHexContrastR);
+        snowColor = hexTileColor(uSnow, terrainTiledUv * 0.66, uHexTileRate, uHexContrastR);
+      }
 
       vec3 terrainAlbedo = sandColor * terrainWeights.x + grassColor * terrainWeights.y + rockColor * terrainWeights.z + snowColor * terrainWeights.w;
+
+      // #2: Wet sand near shoreline — darken albedo, will lower roughness later.
+      float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, vTerrainHeight)) * uWaterEnabled;
+      float wetness = wetEdge * uWetSandEnabled;
+      terrainAlbedo = mix(terrainAlbedo, terrainAlbedo * 0.55, wetness * 0.7);
+
+      // #7: Moisture tint (lush grass in wet climates, brown in dry).
+      terrainAlbedo = moistureTint(terrainAlbedo, vTerrainHeight, terrainWeights);
+
+      // #3: Snow sparkles in direct sun.
+      terrainAlbedo = snowSparkles(terrainAlbedo, vTerrainWorldNormal, vTerrainWorldPos);
+
+      // #6: Cavity AO darkens valleys/gullies.
+      float cavityAO = terrainCavityAO(vTerrainWorldPos);
+      terrainAlbedo *= cavityAO;
 
       // Set diffuse color for Three.js PBR pipeline
       diffuseColor = vec4(terrainAlbedo, diffuseColor.a);
@@ -866,6 +1012,12 @@ function createTerrainMaterial(textureLoader, options) {
         {
           vec4 mraoForRoughness = terrainSampleMRAO(terrainWeights);
           roughnessFactor = clamp(mraoForRoughness.g, 0.04, 1.0);
+          // #2: Wet sand is shinier (lower roughness) near shoreline.
+          float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, vTerrainHeight)) * uWaterEnabled;
+          float wetnessR = wetEdgeR * uWetSandEnabled;
+          roughnessFactor = mix(roughnessFactor, 0.08, wetnessR * 0.7);
+          // #6: Cavity AO also raises roughness in crevices.
+          roughnessFactor = mix(roughnessFactor, 1.0, (1.0 - cavityAO) * 0.3);
         }`
       );
 
@@ -1568,6 +1720,12 @@ export class TerrainRegion {
     this.windDirection = options.windDirection ?? [1, 0.3];
     this.windSpeed = options.windSpeed ?? 5.0;
     this.waterDarkness = options.waterDarkness ?? 0.5;
+    this.triplanarEnabled = options.triplanarEnabled ?? true;
+    this.wetSandEnabled = options.wetSandEnabled ?? true;
+    this.snowSparklesEnabled = options.snowSparklesEnabled ?? true;
+    this.noisePerturbEnabled = options.noisePerturbEnabled ?? true;
+    this.cavityAOEnabled = options.cavityAOEnabled ?? true;
+    this.moisture = options.moisture ?? 0.5;
 
     this.heightMap = options.heightMap ?? new Float32Array(this.samples * this.samples);
     if (this.heightMap.length !== this.samples * this.samples) {
@@ -1633,6 +1791,13 @@ export class TerrainRegion {
       pbrTextures: this.pbrTextures,
       normalStrength: this.normalStrength,
       terrainAOIntensity: this.terrainAOIntensity,
+      triplanarEnabled: this.triplanarEnabled,
+      wetSandEnabled: this.wetSandEnabled,
+      snowSparklesEnabled: this.snowSparklesEnabled,
+      noisePerturbEnabled: this.noisePerturbEnabled,
+      cavityAOEnabled: this.cavityAOEnabled,
+      moisture: this.moisture,
+      sunDirection: this.sunDirection,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
@@ -1912,6 +2077,10 @@ export class TerrainRegion {
     if (this.waterMesh?.material?.uniforms?.uSunDirection) {
       this.waterMesh.material.uniforms.uSunDirection.value.copy(this.sunDirection);
     }
+    const terrainShader = this.terrainMesh?.material?.userData?.shader;
+    if (terrainShader?.uniforms?.uSunDirection) {
+      terrainShader.uniforms.uSunDirection.value.copy(this.sunDirection);
+    }
     return this;
   }
 
@@ -2095,6 +2264,60 @@ export class TerrainRegion {
     const wu = this.waterMesh.material.uniforms;
     if (wu?.uWaterDarkness) {
       wu.uWaterDarkness.value = this.waterDarkness;
+    }
+    return this;
+  }
+
+  setTriplanarEnabled(enabled) {
+    this.triplanarEnabled = Boolean(enabled);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uTriplanarEnabled) {
+      shader.uniforms.uTriplanarEnabled.value = this.triplanarEnabled ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setWetSandEnabled(enabled) {
+    this.wetSandEnabled = Boolean(enabled);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uWetSandEnabled) {
+      shader.uniforms.uWetSandEnabled.value = this.wetSandEnabled ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setSnowSparklesEnabled(enabled) {
+    this.snowSparklesEnabled = Boolean(enabled);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uSnowSparklesEnabled) {
+      shader.uniforms.uSnowSparklesEnabled.value = this.snowSparklesEnabled ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setNoisePerturbEnabled(enabled) {
+    this.noisePerturbEnabled = Boolean(enabled);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uNoisePerturbEnabled) {
+      shader.uniforms.uNoisePerturbEnabled.value = this.noisePerturbEnabled ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setCavityAOEnabled(enabled) {
+    this.cavityAOEnabled = Boolean(enabled);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uCavityAOEnabled) {
+      shader.uniforms.uCavityAOEnabled.value = this.cavityAOEnabled ? 1.0 : 0.0;
+    }
+    return this;
+  }
+
+  setMoisture(moisture) {
+    this.moisture = clamp(moisture, 0, 1);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uMoisture) {
+      shader.uniforms.uMoisture.value = this.moisture;
     }
     return this;
   }
