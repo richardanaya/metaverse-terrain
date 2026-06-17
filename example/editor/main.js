@@ -7,8 +7,6 @@ import { TEXTURE_URLS, PBR_TEXTURE_URLS } from '../shared/textures.js';
 const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');
 const heightmapPreview = document.querySelector('#heightmap-preview');
-const terrainStyleInput = document.querySelector('#terrain-style');
-const applyTerrainStyleButton = document.querySelector('#apply-terrain-style');
 const regionSizeInput = document.querySelector('#region-size');
 const terrainQualityInput = document.querySelector('#terrain-quality');
 const renderSubdivisionsInput = document.querySelector('#render-subdivisions');
@@ -82,69 +80,6 @@ const layerHeights = {
   grass: Number(layerSlider.dataset.grass),
   rock: Number(layerSlider.dataset.rock),
   snow: Number(layerSlider.dataset.snow),
-};
-
-const TERRAIN_STYLE_PRESETS = {
-  rockyCoast: {
-    quality: 'medium',
-    renderSubdivisions: 2,
-    detail: 0.75,
-    cliff: 0.8,
-    micro: 1.0,
-    shoreline: 0.45,
-    moisture: 0.5,
-    biome: 0.45,
-    proceduralNormal: 0,
-    waterDarkness: 0.48,
-    windSpeed: 5,
-    erosion: { iterations: 1, strength: 0.55 },
-    layers: { water: 21.5, grass: 22.5, rock: 30, snow: 36 },
-  },
-  softHills: {
-    quality: 'medium',
-    renderSubdivisions: 2,
-    detail: 0.35,
-    cliff: 0.12,
-    micro: 0.55,
-    shoreline: 0.3,
-    moisture: 0.42,
-    biome: 0.22,
-    proceduralNormal: 0,
-    waterDarkness: 0.36,
-    windSpeed: 3.2,
-    erosion: { iterations: 1, strength: 0.25 },
-    layers: { water: 20.5, grass: 22, rock: 34, snow: 39 },
-  },
-  alpine: {
-    quality: 'high',
-    renderSubdivisions: 3,
-    detail: 1.15,
-    cliff: 1.25,
-    micro: 1.15,
-    shoreline: 0.22,
-    moisture: 0.72,
-    biome: 0.36,
-    proceduralNormal: 0,
-    waterDarkness: 0.42,
-    windSpeed: 6.5,
-    erosion: { iterations: 2, strength: 0.7 },
-    layers: { water: 19, grass: 22, rock: 27, snow: 32 },
-  },
-  marsh: {
-    quality: 'medium',
-    renderSubdivisions: 2,
-    detail: 0.45,
-    cliff: 0.05,
-    micro: 0.8,
-    shoreline: 0.8,
-    moisture: 0.88,
-    biome: 0.58,
-    proceduralNormal: 0,
-    waterDarkness: 0.82,
-    windSpeed: 2.2,
-    erosion: { iterations: 1, strength: 0.4 },
-    layers: { water: 22.5, grass: 23.5, rock: 35, snow: 39 },
-  },
 };
 
 const activeKeys = new Set();
@@ -246,8 +181,6 @@ init().catch(console.error);
 
 function bindPanel() {
   window.addEventListener('resize', resize);
-
-  applyTerrainStyleButton.addEventListener('click', () => applyTerrainStyle(terrainStyleInput.value));
 
   bindRange(regionSizeInput, regionSizeValue, (value) => {
     terrain.setRegionSize(value);
@@ -434,34 +367,6 @@ function syncWaterControls() {
   refractionEnabledInput.disabled = !enabled;
 }
 
-function applyTerrainStyle(name) {
-  const preset = TERRAIN_STYLE_PRESETS[name] ?? TERRAIN_STYLE_PRESETS.rockyCoast;
-  terrainStyleInput.value = TERRAIN_STYLE_PRESETS[name] ? name : 'rockyCoast';
-
-  terrainQualityInput.value = preset.quality;
-  terrainQualityInput.dispatchEvent(new Event('change', { bubbles: true }));
-  setRangeValue(renderSubdivisionsInput, preset.renderSubdivisions);
-  setRangeValue(terrainDetailStrengthInput, preset.detail);
-  setRangeValue(terrainCliffStrengthInput, preset.cliff);
-  setRangeValue(terrainMicroDetailStrengthInput, preset.micro);
-  setRangeValue(shorelineStrengthInput, preset.shoreline);
-  setRangeValue(moistureInput, preset.moisture);
-  setRangeValue(biomeVariationInput, preset.biome);
-  setRangeValue(proceduralNormalStrengthInput, preset.proceduralNormal);
-  setRangeValue(waterDarknessInput, preset.waterDarkness);
-  setRangeValue(windSpeedInput, preset.windSpeed);
-  setRangeValue(erosionStrengthInput, preset.erosion.strength);
-  setRangeValue(erosionIterationsInput, preset.erosion.iterations);
-
-  Object.assign(layerHeights, preset.layers);
-  applyLayerHeights();
-
-  terrain.randomize(Math.floor(Math.random() * 100000), {
-    erosionIterations: preset.erosion.iterations,
-    erosionStrength: preset.erosion.strength,
-  });
-}
-
 function updateSunPosition(azimuthDeg, elevationDeg) {
   const az = THREE.MathUtils.degToRad(azimuthDeg);
   const el = THREE.MathUtils.degToRad(elevationDeg);
@@ -583,11 +488,6 @@ function bindRange(input, label, onInput) {
   input.addEventListener('input', () => {
     label.textContent = onInput(Number(input.value));
   });
-}
-
-function setRangeValue(input, value) {
-  input.value = String(value);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function setBrushMode(mode) {

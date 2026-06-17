@@ -34,7 +34,7 @@ export const DEFAULT_TERRAIN_CLIFF_STRENGTH = 0;
 export const DEFAULT_TERRAIN_MICRO_DETAIL_STRENGTH = 1;
 export const DEFAULT_BIOME_VARIATION = 0;
 export const DEFAULT_SHORELINE_STRENGTH = 0;
-export const DEFAULT_PROCEDURAL_NORMAL_STRENGTH = 0;
+export const DEFAULT_PROCEDURAL_NORMAL_STRENGTH = 0.25;
 export const DEFAULT_TERRAIN_QUALITY = 'low';
 
 export const TERRAIN_TEXTURE_LAYERS = ['sand', 'grass', 'rock', 'snow', 'water'];
@@ -378,7 +378,7 @@ function terrainLayerWeightsAt(height, normalY, options, worldX = 0, worldZ = 0)
   const blendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
   const moisture = localMoistureAt(worldX, worldZ, options);
   const slope = clamp((1 - normalY) * 2.4, 0, 1);
-  const wetEdge = (1 - smoothstep(options.waterLevel - 0.4, options.waterLevel + 2.4, height)) * (options.waterEnabled ? 1 : 0);
+  const wetEdge = (1 - smoothstep(options.waterLevel - 0.25, options.waterLevel + 1.25, height)) * (options.waterEnabled ? 1 : 0);
   const snowStart = textureHeights.snowStart - (moisture - 0.5) * 4;
 
   let sandWeight = 1 - smoothstep(textureHeights.sandMax - blendWidth, textureHeights.sandMax, height);
@@ -387,7 +387,7 @@ function terrainLayerWeightsAt(height, normalY, options, worldX = 0, worldZ = 0)
   let rockWeight = smoothstep(textureHeights.rockStart - blendWidth, textureHeights.rockStart + blendWidth, height) + slope * 0.35;
   let snowWeight = smoothstep(snowStart - blendWidth, snowStart + blendWidth, height) * (1 - slope * 0.25);
 
-  sandWeight += wetEdge * 0.9;
+  sandWeight += wetEdge * 0.6;
   grassWeight *= 1 + slope * 0.75;
   sandWeight *= 1 - slope * 0.25;
 
@@ -722,6 +722,61 @@ function updateWaterDepthData(heightMap, waterMesh, options) {
   depthAttribute.needsUpdate = true;
 }
 
+function markAttributeRange(attribute, offset, count) {
+  if (typeof attribute.addUpdateRange === 'function') {
+    attribute.addUpdateRange(offset, count);
+  } else if (attribute.updateRange) {
+    if (attribute.updateRange.count === -1) {
+      attribute.updateRange.offset = offset;
+      attribute.updateRange.count = count;
+    } else {
+      const start = Math.min(attribute.updateRange.offset, offset);
+      const end = Math.max(attribute.updateRange.offset + attribute.updateRange.count, offset + count);
+      attribute.updateRange.offset = start;
+      attribute.updateRange.count = end - start;
+    }
+  }
+}
+
+function syncHeightMapRegionToGeometry(heightMap, terrainMesh, waterMesh, options, sampleBounds, syncOptions = {}) {
+  if (!sampleBounds) return;
+
+  const position = terrainMesh.geometry.attributes.position;
+  const renderSamples = terrainMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
+  const subdivisions = (renderSamples - 1) / (options.samples - 1);
+  const margin = Math.ceil(subdivisions * 2);
+  const minX = Math.max(0, Math.floor(sampleBounds.minX * subdivisions) - margin);
+  const maxX = Math.min(renderSamples - 1, Math.ceil(sampleBounds.maxX * subdivisions) + margin);
+  const minZ = Math.max(0, Math.floor(sampleBounds.minZ * subdivisions) - margin);
+  const maxZ = Math.min(renderSamples - 1, Math.ceil(sampleBounds.maxZ * subdivisions) + margin);
+
+  for (let z = minZ; z <= maxZ; z += 1) {
+    const rowStart = indexFor(minX, z, renderSamples);
+    for (let x = minX; x <= maxX; x += 1) {
+      const index = indexFor(x, z, renderSamples);
+      position.array[index * 3 + 1] = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+    }
+    markAttributeRange(position, rowStart * 3, (maxX - minX + 1) * 3);
+  }
+
+  position.needsUpdate = true;
+
+  if (syncOptions.updateWaterDepth) {
+    const depthAttribute = waterMesh?.geometry?.attributes?.waterDepth;
+    if (depthAttribute) {
+      for (let z = minZ; z <= maxZ; z += 1) {
+        const rowStart = indexFor(minX, z, renderSamples);
+        for (let x = minX; x <= maxX; x += 1) {
+          const index = indexFor(x, z, renderSamples);
+          depthAttribute.array[index] = options.waterLevel - evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+        }
+        markAttributeRange(depthAttribute, rowStart, maxX - minX + 1);
+      }
+      depthAttribute.needsUpdate = true;
+    }
+  }
+}
+
 function syncHeightMapToGeometry(heightMap, terrainMesh, waterMesh, options) {
   const position = terrainMesh.geometry.attributes.position;
   const renderSamples = terrainMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
@@ -802,6 +857,13 @@ function applyBrush(heightMap, worldPoint, brush, options) {
   const step = regionSize / (samples - 1);
   const delta = brush.strength * 0.035 * sign;
   const flattenBlend = Math.min(1, brush.strength * 0.018);
+  const dirtyBounds = {
+    minX: samples - 1,
+    minZ: samples - 1,
+    maxX: 0,
+    maxZ: 0,
+  };
+  let changed = false;
 
   if (effectiveMode === 'flatten' && brush.flattenHeight === null) {
     brush.flattenHeight = worldPoint.y;
@@ -818,6 +880,7 @@ function applyBrush(heightMap, worldPoint, brush, options) {
       const normalizedDistance = distance / brush.radius;
       const falloff = 0.5 + Math.cos(normalizedDistance * Math.PI) * 0.5;
       const index = indexFor(x, z, samples);
+      const previousHeight = heightMap[index];
 
       if (effectiveMode === 'flatten') {
         heightMap[index] = clamp(
@@ -828,8 +891,18 @@ function applyBrush(heightMap, worldPoint, brush, options) {
       } else {
         heightMap[index] = clamp(heightMap[index] + delta * falloff, minHeight, maxHeight);
       }
+
+      if (heightMap[index] !== previousHeight) {
+        dirtyBounds.minX = Math.min(dirtyBounds.minX, x);
+        dirtyBounds.minZ = Math.min(dirtyBounds.minZ, z);
+        dirtyBounds.maxX = Math.max(dirtyBounds.maxX, x);
+        dirtyBounds.maxZ = Math.max(dirtyBounds.maxZ, z);
+        changed = true;
+      }
     }
   }
+
+  return changed ? dirtyBounds : null;
 }
 
 // --- helpers ---
@@ -1187,7 +1260,7 @@ function createTerrainMaterial(textureLoader, options) {
       vec4 terrainLayerWeights(float terrainHeight, vec3 terrainWorldNormal, vec3 worldPos) {
         vec3 geomNormal = normalize(terrainWorldNormal);
         float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
-        float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, terrainHeight)) * uWaterEnabled;
+        float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, terrainHeight)) * uWaterEnabled;
         float localMoisture = terrainLocalMoisture(worldPos);
 
         // Moisture lowers the effective snow line so wetter climates snow earlier.
@@ -1199,7 +1272,7 @@ function createTerrainMaterial(textureLoader, options) {
         float rockWeight = smoothstep(uRockStart - uBlendWidth, uRockStart + uBlendWidth, terrainHeight) + slope * 0.35;
         float snowWeight = smoothstep(snowStartEff - uBlendWidth, snowStartEff + uBlendWidth, terrainHeight) * (1.0 - slope * 0.25);
 
-        sandWeight += wetEdge * 0.9;
+        sandWeight += wetEdge * 0.6;
         grassWeight *= 1.0 + slope * 0.75;
         sandWeight *= 1.0 - slope * 0.25;
 
@@ -1353,7 +1426,7 @@ function createTerrainMaterial(textureLoader, options) {
       vec3 terrainAlbedo = sandColor * terrainWeights.x + grassColor * terrainWeights.y + rockColor * terrainWeights.z + snowColor * terrainWeights.w;
 
       // #2: Wet sand near shoreline — darken albedo, will lower roughness later.
-      float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, vTerrainHeight)) * uWaterEnabled;
+      float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
       float wetness = wetEdge * uWetSandEnabled;
       terrainAlbedo = mix(terrainAlbedo, terrainAlbedo * 0.55, wetness * 0.7);
 
@@ -1381,7 +1454,7 @@ function createTerrainMaterial(textureLoader, options) {
           vec4 mraoForRoughness = terrainSampleMRAO(terrainWeights);
           roughnessFactor = clamp(mraoForRoughness.g, 0.04, 1.0);
           // #2: Wet sand is shinier (lower roughness) near shoreline.
-          float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.4, uWaterLevel + 2.4, vTerrainHeight)) * uWaterEnabled;
+          float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
           float wetnessR = wetEdgeR * uWetSandEnabled;
           roughnessFactor = mix(roughnessFactor, 0.08, wetnessR * 0.7);
           // #6: Cavity AO also raises roughness in crevices.
@@ -2122,6 +2195,7 @@ export class TerrainRegion {
       flattenHeight: null,
       temporaryLower: false,
     };
+    this.strokeDirtyBounds = null;
 
     this.brushCursor = null;
 
@@ -2137,8 +2211,10 @@ export class TerrainRegion {
 
     this.group = new THREE.Group();
     this.terrainMesh = this.createTerrainMesh();
+    this.collisionMesh = this.createCollisionMesh();
     this.waterMesh = this.createWaterMesh();
     this.group.add(this.terrainMesh);
+    this.group.add(this.collisionMesh);
     this.group.add(this.waterMesh);
 
     if (options.addBoundaryFrame ?? true) {
@@ -2176,6 +2252,25 @@ export class TerrainRegion {
     };
   }
 
+  getCollisionGeometryOptions() {
+    return {
+      regionSize: this.regionSize,
+      samples: this.samples,
+      renderSubdivisions: 1,
+      terrainDetailStrength: 0,
+      terrainCliffStrength: 0,
+      terrainMicroDetailStrength: 0,
+      biomeVariation: 0,
+      shorelineStrength: 0,
+      waterLevel: this.waterLevel,
+      waterEnabled: this.waterEnabled,
+      textureHeights: this.textureHeights,
+      textureBlendWidth: this.textureBlendWidth,
+      moisture: this.moisture,
+      seed: this.seed,
+    };
+  }
+
   createTerrainMesh() {
     const geometry = createTerrainGeometry(this.heightMap, this.getRenderGeometryOptions());
     const material = createTerrainMaterial(this.textureLoader, {
@@ -2203,6 +2298,14 @@ export class TerrainRegion {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
     mesh.castShadow = false;
+    return mesh;
+  }
+
+  createCollisionMesh() {
+    const geometry = createTerrainGeometry(this.heightMap, this.getCollisionGeometryOptions());
+    const material = new THREE.MeshBasicMaterial({ visible: false });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'TerrainRegionCollisionMesh';
     return mesh;
   }
 
@@ -2244,7 +2347,9 @@ export class TerrainRegion {
 
   paintAt(worldPoint, options = {}) {
     this.paint(worldPoint, options);
-    this.emitHeightmapChange();
+    if (options.emit !== false) {
+      this.emitHeightmapChange();
+    }
     return this;
   }
 
@@ -2404,9 +2509,11 @@ export class TerrainRegion {
 
   rebuildTerrainGeometry() {
     this.terrainMesh.geometry.dispose();
+    this.collisionMesh.geometry.dispose();
     this.waterMesh.geometry.dispose();
 
     this.terrainMesh.geometry = createTerrainGeometry(this.heightMap, this.getRenderGeometryOptions());
+    this.collisionMesh.geometry = createTerrainGeometry(this.heightMap, this.getCollisionGeometryOptions());
     this.waterMesh.geometry = createWaterGeometry(this.heightMap, this.getRenderGeometryOptions());
 
     if (this.boundaryFrame) {
@@ -2594,11 +2701,20 @@ export class TerrainRegion {
 
   beginStroke() {
     this.brush.flattenHeight = null;
+    this.strokeDirtyBounds = null;
     return this;
   }
 
-  endStroke() {
+  endStroke(options = {}) {
+    const hadChanges = !!this.strokeDirtyBounds;
     this.brush.flattenHeight = null;
+    this.strokeDirtyBounds = null;
+    if (hadChanges) {
+      this.sync();
+      if (options.emit !== false) {
+        this.emitHeightmapChange();
+      }
+    }
     return this;
   }
 
@@ -2609,7 +2725,7 @@ export class TerrainRegion {
       temporaryLower: options.temporaryLower ?? false,
     };
 
-    applyBrush(this.heightMap, worldPoint, brush, {
+    const dirtyBounds = applyBrush(this.heightMap, worldPoint, brush, {
       regionSize: this.regionSize,
       samples: this.samples,
       minHeight: this.minHeight,
@@ -2617,17 +2733,39 @@ export class TerrainRegion {
     });
 
     this.brush.flattenHeight = brush.flattenHeight;
-    this.sync();
+    if (!dirtyBounds) return this;
+
+    if (options.live) {
+      this.mergeStrokeDirtyBounds(dirtyBounds);
+      syncHeightMapRegionToGeometry(this.heightMap, this.terrainMesh, this.waterMesh, this.getRenderGeometryOptions(), dirtyBounds);
+      syncHeightMapRegionToGeometry(this.heightMap, this.collisionMesh, null, this.getCollisionGeometryOptions(), dirtyBounds);
+    } else {
+      this.sync();
+    }
     return this;
+  }
+
+  mergeStrokeDirtyBounds(bounds) {
+    if (!this.strokeDirtyBounds) {
+      this.strokeDirtyBounds = { ...bounds };
+      return this.strokeDirtyBounds;
+    }
+
+    this.strokeDirtyBounds.minX = Math.min(this.strokeDirtyBounds.minX, bounds.minX);
+    this.strokeDirtyBounds.minZ = Math.min(this.strokeDirtyBounds.minZ, bounds.minZ);
+    this.strokeDirtyBounds.maxX = Math.max(this.strokeDirtyBounds.maxX, bounds.maxX);
+    this.strokeDirtyBounds.maxZ = Math.max(this.strokeDirtyBounds.maxZ, bounds.maxZ);
+    return this.strokeDirtyBounds;
   }
 
   sync() {
     syncHeightMapToGeometry(this.heightMap, this.terrainMesh, this.waterMesh, this.getRenderGeometryOptions());
+    syncHeightMapToGeometry(this.heightMap, this.collisionMesh, null, this.getCollisionGeometryOptions());
     return this;
   }
 
   raycast(raycaster) {
-    const hits = raycaster.intersectObject(this.terrainMesh, false);
+    const hits = raycaster.intersectObject(this.collisionMesh ?? this.terrainMesh, false);
     return hits[0] ?? null;
   }
 
@@ -2840,8 +2978,10 @@ export class TerrainRegion {
     }
 
     this.terrainMesh.geometry.dispose();
+    this.collisionMesh.geometry.dispose();
     this.waterMesh.geometry.dispose();
     this.terrainMesh.material.dispose();
+    this.collisionMesh.material.dispose();
     this.waterMesh.material.dispose();
 
     if (this.boundaryFrame) {
@@ -2895,7 +3035,7 @@ export function bindTerrainPainting(region, options) {
     region.beginStroke();
     setControlsEnabled?.(false);
     domElement.setPointerCapture(event.pointerId);
-    region.paintAt(hit.point, { temporaryLower: event.shiftKey });
+    region.paintAt(hit.point, { temporaryLower: event.shiftKey, live: true, emit: false });
   };
 
   const onPointerMove = (event) => {
@@ -2911,7 +3051,7 @@ export function bindTerrainPainting(region, options) {
     }
 
     if (isPainting) {
-      region.paintAt(hit.point, { temporaryLower: event.shiftKey });
+      region.paintAt(hit.point, { temporaryLower: event.shiftKey, live: true, emit: false });
     }
   };
 

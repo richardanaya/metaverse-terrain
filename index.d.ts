@@ -164,6 +164,10 @@ export interface TerrainRegionOptions {
 export interface PaintOptions {
   mode?: BrushMode;
   temporaryLower?: boolean;
+  /** Use dirty-region lightweight mesh sync. Intended for interactive brush dragging. */
+  live?: boolean;
+  /** Emit onHeightmapChange after this paint call. Default true. */
+  emit?: boolean;
 }
 
 export interface BrushCursorOptions {
@@ -179,6 +183,11 @@ export interface TerrainErosionOptions {
 export interface TerrainRandomizeOptions {
   erosionIterations?: number;
   erosionStrength?: number;
+}
+
+export interface StrokeEndOptions {
+  /** Emit onHeightmapChange after the full stroke sync. Default true. */
+  emit?: boolean;
 }
 
 export class TerrainRegion {
@@ -222,6 +231,7 @@ export class TerrainRegion {
   brushCursor: THREE.Mesh | null;
   group: THREE.Group;
   terrainMesh: THREE.Mesh;
+  collisionMesh: THREE.Mesh;
   waterMesh: THREE.Mesh;
   boundaryFrame?: THREE.Line;
   environment: THREE.Texture | null;
@@ -241,6 +251,7 @@ export class TerrainRegion {
   get halfRegion(): number;
 
   createTerrainMesh(): THREE.Mesh;
+  createCollisionMesh(): THREE.Mesh;
   createWaterMesh(): THREE.Mesh;
   attachBrushCursor(): THREE.Mesh;
 
@@ -316,7 +327,7 @@ export class TerrainRegion {
   setBrushRadius(radius: number): this;
   setBrushStrength(strength: number): this;
   beginStroke(): this;
-  endStroke(): this;
+  endStroke(options?: StrokeEndOptions): this;
 
   sync(): this;
   raycast(raycaster: THREE.Raycaster): THREE.Intersection | null;
