@@ -23,16 +23,55 @@
         </div>
 
         <div class="control-group">
+          <label for="terrain-style">Terrain Style</label>
+          <select id="terrain-style">
+            <option value="rockyCoast">Rocky Coast</option>
+            <option value="softHills">Soft Hills</option>
+            <option value="alpine">Alpine</option>
+            <option value="marsh">Marsh</option>
+          </select>
+          <button id="apply-terrain-style" type="button">Apply Style</button>
+        </div>
+
+        <div class="control-group">
           <label for="region-size">Region Size <span id="region-size-value">256m</span></label>
           <input id="region-size" type="range" min="64" max="512" step="8" value="256" />
         </div>
 
         <div class="control-group">
-          <label for="render-subdivisions">Terrain Mesh <span id="render-subdivisions-value">1x</span></label>
-          <input id="render-subdivisions" type="range" min="1" max="4" step="1" value="1" />
+          <label for="terrain-quality">Terrain Mesh</label>
+          <select id="terrain-quality">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
 
-          <label class="sub-label" for="terrain-detail-strength">Detail Strength <span id="terrain-detail-strength-value">0.00m</span></label>
-          <input id="terrain-detail-strength" type="range" min="0" max="2" step="0.05" value="0" />
+          <label class="sub-label" for="render-subdivisions">Subdivisions <span id="render-subdivisions-value">2x</span></label>
+          <input id="render-subdivisions" type="range" min="1" max="4" step="1" value="2" />
+
+          <label class="sub-label" for="terrain-detail-strength">Detail Strength <span id="terrain-detail-strength-value">0.75m</span></label>
+          <input id="terrain-detail-strength" type="range" min="0" max="2" step="0.05" value="0.75" />
+
+          <label class="sub-label" for="terrain-cliff-strength">Cliff Breakup <span id="terrain-cliff-strength-value">0.80</span></label>
+          <input id="terrain-cliff-strength" type="range" min="0" max="2" step="0.05" value="0.8" />
+
+          <label class="sub-label" for="terrain-micro-detail-strength">Micro Detail <span id="terrain-micro-detail-strength-value">1.00</span></label>
+          <input id="terrain-micro-detail-strength" type="range" min="0" max="2" step="0.05" value="1" />
+
+          <label class="sub-label" for="shoreline-strength">Shoreline Shelf <span id="shoreline-strength-value">0.45</span></label>
+          <input id="shoreline-strength" type="range" min="0" max="1" step="0.01" value="0.45" />
+        </div>
+
+        <div class="control-group">
+          <label>Erosion</label>
+          <label class="sub-label" for="erosion-strength">Strength <span id="erosion-strength-value">0.55</span></label>
+          <input id="erosion-strength" type="range" min="0" max="1.5" step="0.05" value="0.55" />
+
+          <label class="sub-label" for="erosion-iterations">Iterations <span id="erosion-iterations-value">1</span></label>
+          <input id="erosion-iterations" type="range" min="1" max="4" step="1" value="1" />
+
+          <button id="erode-terrain" type="button">Erode Terrain</button>
         </div>
 
         <div class="control-group">
@@ -127,6 +166,12 @@
           </div>
           <label class="sub-label" for="moisture">Moisture <span id="moisture-value">Normal</span></label>
           <input id="moisture" type="range" min="0" max="1" step="0.01" value="0.5" />
+
+          <label class="sub-label" for="biome-variation">Biome Variation <span id="biome-variation-value">0.45</span></label>
+          <input id="biome-variation" type="range" min="0" max="1" step="0.01" value="0.45" />
+
+          <label class="sub-label" for="procedural-normal-strength">Procedural Normals <span id="procedural-normal-strength-value">0.00</span></label>
+          <input id="procedural-normal-strength" type="range" min="0" max="1.5" step="0.05" value="0" />
         </div>
 
         <div class="control-group">

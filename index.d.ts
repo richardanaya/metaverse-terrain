@@ -15,6 +15,12 @@ export const DEFAULT_SUN_DIRECTION: [number, number, number];
 export const DEFAULT_RENDER_SUBDIVISIONS: number;
 export const MAX_RENDER_SUBDIVISIONS: number;
 export const DEFAULT_TERRAIN_DETAIL_STRENGTH: number;
+export const DEFAULT_TERRAIN_CLIFF_STRENGTH: number;
+export const DEFAULT_TERRAIN_MICRO_DETAIL_STRENGTH: number;
+export const DEFAULT_BIOME_VARIATION: number;
+export const DEFAULT_SHORELINE_STRENGTH: number;
+export const DEFAULT_PROCEDURAL_NORMAL_STRENGTH: number;
+export const DEFAULT_TERRAIN_QUALITY: TerrainQuality;
 export const TERRAIN_TEXTURE_LAYERS: readonly ['sand', 'grass', 'rock', 'snow', 'water'];
 export const PBR_CHANNELS: readonly ['metal', 'roughness', 'normal', 'ao'];
 export const DEFAULT_TEXTURE_HEIGHTS: TextureHeights;
@@ -24,6 +30,7 @@ export type BrushMode = 'raise' | 'lower' | 'flatten';
 export type TerrainTextureLayer = (typeof TERRAIN_TEXTURE_LAYERS)[number];
 export type PBRChannel = (typeof PBR_CHANNELS)[number];
 export type PBRLayer = TerrainTextureLayer;
+export type TerrainQuality = 'low' | 'medium' | 'high' | 'ultra';
 
 export interface TerrainTextures {
   sand: string | THREE.Texture;
@@ -97,8 +104,20 @@ export interface TerrainRegionOptions {
   waterMaxAlpha?: number;
   /** Render-only mesh subdivisions between editable height samples. Default 1, max 4. Does not change heightMap. */
   renderSubdivisions?: number;
+  /** Quality preset for render-only mesh subdivisions. Ignored when renderSubdivisions is provided. */
+  terrainQuality?: TerrainQuality;
   /** Render-only procedural displacement strength. Default 0. Does not change heightMap. */
   terrainDetailStrength?: number;
+  /** Render-only cliff/fracture displacement strength. Default 0. Does not change heightMap. */
+  terrainCliffStrength?: number;
+  /** Multiplier for per-layer render-only micro displacement. Default 1. */
+  terrainMicroDetailStrength?: number;
+  /** Procedural biome/moisture mask variation. Default 0. */
+  biomeVariation?: number;
+  /** Render-only shoreline shelf shaping strength. Default 0. Does not change heightMap. */
+  shorelineStrength?: number;
+  /** Shader-side procedural terrain normal perturbation strength. Default 0. */
+  proceduralNormalStrength?: number;
   textureDensity?: number;
   hexTileRate?: number;
   hexTileContrast?: number;
@@ -152,6 +171,16 @@ export interface BrushCursorOptions {
   radius?: number;
 }
 
+export interface TerrainErosionOptions {
+  iterations?: number;
+  strength?: number;
+}
+
+export interface TerrainRandomizeOptions {
+  erosionIterations?: number;
+  erosionStrength?: number;
+}
+
 export class TerrainRegion {
   regionSize: number;
   sampleSpacing: number;
@@ -168,8 +197,14 @@ export class TerrainRegion {
   waterShallowAlpha: number;
   waterDeepAlpha: number;
   waterMaxAlpha: number;
+  terrainQuality: TerrainQuality;
   renderSubdivisions: number;
   terrainDetailStrength: number;
+  terrainCliffStrength: number;
+  terrainMicroDetailStrength: number;
+  biomeVariation: number;
+  shorelineStrength: number;
+  proceduralNormalStrength: number;
   textureDensity: number;
   hexTileRate: number;
   hexTileContrast: number;
@@ -212,7 +247,9 @@ export class TerrainRegion {
   paintAt(worldPoint: THREE.Vector3, options?: PaintOptions): this;
   paint(worldPoint: THREE.Vector3, options?: PaintOptions): this;
 
-  randomize(seed?: number): this;
+  randomize(seed?: number, options?: TerrainRandomizeOptions): this;
+  randomize(options?: TerrainRandomizeOptions): this;
+  erode(options?: TerrainErosionOptions): this;
   level(height?: number): this;
 
   setWaterEnabled(enabled: boolean): this;
@@ -224,8 +261,20 @@ export class TerrainRegion {
   rebuildTerrainGeometry(): this;
   /** Set render-only mesh subdivisions between editable height samples. Rebuilds terrain/water geometry. */
   setRenderSubdivisions(subdivisions: number): this;
+  /** Set render-only quality preset. Rebuilds terrain/water geometry if subdivision count changes. */
+  setTerrainQuality(quality: TerrainQuality): this;
   /** Set render-only procedural terrain displacement strength. Does not change heightMap. */
   setTerrainDetailStrength(strength: number): this;
+  /** Set render-only cliff/fracture displacement strength. Does not change heightMap. */
+  setTerrainCliffStrength(strength: number): this;
+  /** Set per-layer render-only micro displacement multiplier. Does not change heightMap. */
+  setTerrainMicroDetailStrength(strength: number): this;
+  /** Set procedural biome/moisture mask variation. */
+  setBiomeVariation(variation: number): this;
+  /** Set render-only shoreline shelf shaping strength. Does not change heightMap. */
+  setShorelineStrength(strength: number): this;
+  /** Set shader-side procedural terrain normal perturbation strength. */
+  setProceduralNormalStrength(strength: number): this;
   setHexTileRate(rate: number): this;
   setHexTileContrast(contrast: number): this;
   setTextureHeights(heights: Partial<TextureHeights>): this;
