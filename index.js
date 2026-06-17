@@ -929,6 +929,7 @@ const waterVertexShader = `
 
   uniform float uTime;
   uniform vec2 uWindDirection;
+  uniform float uWindSpeed;
 
   varying vec2 vUv;
   varying float vTerrainDepth;
@@ -944,8 +945,9 @@ const waterVertexShader = `
     return vec2(c * dir.x - s * dir.y, s * dir.x + c * dir.y);
   }
 
-  // Gerstner wave parameters: 5 waves with decreasing amplitude,
+  // Gerstner wave base parameters: 5 waves with decreasing amplitude,
   // increasing frequency, and angular spread around the wind direction.
+  // Amplitudes are scaled at runtime by uWindSpeed.
   const float A1 = 0.16, A2 = 0.10, A3 = 0.07, A4 = 0.04, A5 = 0.025;
   const float W1 = 0.45, W2 = 0.72, W3 = 1.05, W4 = 1.48, W5 = 2.10;
   const float Q1 = 0.85, Q2 = 0.80, Q3 = 0.70, Q4 = 0.55, Q5 = 0.40;
@@ -958,6 +960,12 @@ const waterVertexShader = `
     float waveMask = smoothstep(0.12, 3.0, waterDepth);
     vec2 pos = position.xz;
     vec2 windDir = normalize(uWindDirection);
+    // windScale: 1.0 at default speed (5.0). 0 = calm (flat), 15 = stormy (3x).
+    float windScale = uWindSpeed / 5.0;
+    float scaledTime = uTime * windScale;
+
+    // Scaled amplitudes — bigger waves with more wind.
+    float a1 = A1 * windScale, a2 = A2 * windScale, a3 = A3 * windScale, a4 = A4 * windScale, a5 = A5 * windScale;
 
     vec2 D1 = rotateDir(windDir, OFF1);
     vec2 D2 = rotateDir(windDir, OFF2);
@@ -965,37 +973,35 @@ const waterVertexShader = `
     vec2 D4 = rotateDir(windDir, OFF4);
     vec2 D5 = rotateDir(windDir, OFF5);
 
-    float p1 = W1 * dot(D1, pos) + sqrt(9.8 * W1) * uTime * 0.5;
-    float p2 = W2 * dot(D2, pos) + sqrt(9.8 * W2) * uTime * 0.5;
-    float p3 = W3 * dot(D3, pos) + sqrt(9.8 * W3) * uTime * 0.5;
-    float p4 = W4 * dot(D4, pos) + sqrt(9.8 * W4) * uTime * 0.5;
-    float p5 = W5 * dot(D5, pos) + sqrt(9.8 * W5) * uTime * 0.5;
+    float p1 = W1 * dot(D1, pos) + sqrt(9.8 * W1) * scaledTime * 0.5;
+    float p2 = W2 * dot(D2, pos) + sqrt(9.8 * W2) * scaledTime * 0.5;
+    float p3 = W3 * dot(D3, pos) + sqrt(9.8 * W3) * scaledTime * 0.5;
+    float p4 = W4 * dot(D4, pos) + sqrt(9.8 * W4) * scaledTime * 0.5;
+    float p5 = W5 * dot(D5, pos) + sqrt(9.8 * W5) * scaledTime * 0.5;
 
     float c1 = cos(p1), c2 = cos(p2), c3 = cos(p3), c4 = cos(p4), c5 = cos(p5);
     float s1 = sin(p1), s2 = sin(p2), s3 = sin(p3), s4 = sin(p4), s5 = sin(p5);
 
     vec3 transformed = position;
-    float waveHeight = A1*s1 + A2*s2 + A3*s3 + A4*s4 + A5*s5;
-    transformed.x += (Q1*A1*D1.x*c1 + Q2*A2*D2.x*c2 + Q3*A3*D3.x*c3 + Q4*A4*D4.x*c4 + Q5*A5*D5.x*c5) * waveMask;
-    transformed.z += (Q1*A1*D1.y*c1 + Q2*A2*D2.y*c2 + Q3*A3*D3.y*c3 + Q4*A4*D4.y*c4 + Q5*A5*D5.y*c5) * waveMask;
+    float waveHeight = a1*s1 + a2*s2 + a3*s3 + a4*s4 + a5*s5;
+    transformed.x += (Q1*a1*D1.x*c1 + Q2*a2*D2.x*c2 + Q3*a3*D3.x*c3 + Q4*a4*D4.x*c4 + Q5*a5*D5.x*c5) * waveMask;
+    transformed.z += (Q1*a1*D1.y*c1 + Q2*a2*D2.y*c2 + Q3*a3*D3.y*c3 + Q4*a4*D4.y*c4 + Q5*a5*D5.y*c5) * waveMask;
     transformed.y += waveHeight * waveMask;
 
-    float WA1 = A1*W1, WA2 = A2*W2, WA3 = A3*W3, WA4 = A4*W4, WA5 = A5*W5;
+    float WA1 = a1*W1, WA2 = a2*W2, WA3 = a3*W3, WA4 = a4*W4, WA5 = a5*W5;
 
     vec3 B = vec3(
-      1.0 - (Q1*A1*D1.x*D1.x*W1*s1 + Q2*A2*D2.x*D2.x*W2*s2 + Q3*A3*D3.x*D3.x*W3*s3 + Q4*A4*D4.x*D4.x*W4*s4 + Q5*A5*D5.x*D5.x*W5*s5) * waveMask,
+      1.0 - (Q1*a1*D1.x*D1.x*W1*s1 + Q2*a2*D2.x*D2.x*W2*s2 + Q3*a3*D3.x*D3.x*W3*s3 + Q4*a4*D4.x*D4.x*W4*s4 + Q5*a5*D5.x*D5.x*W5*s5) * waveMask,
       (WA1*D1.x*c1 + WA2*D2.x*c2 + WA3*D3.x*c3 + WA4*D4.x*c4 + WA5*D5.x*c5) * waveMask,
-      -(Q1*A1*D1.x*D1.y*W1*s1 + Q2*A2*D2.x*D2.y*W2*s2 + Q3*A3*D3.x*D3.y*W3*s3 + Q4*A4*D4.x*D4.y*W4*s4 + Q5*A5*D5.x*D5.y*W5*s5) * waveMask
+      -(Q1*a1*D1.x*D1.y*W1*s1 + Q2*a2*D2.x*D2.y*W2*s2 + Q3*a3*D3.x*D3.y*W3*s3 + Q4*a4*D4.x*D4.y*W4*s4 + Q5*a5*D5.x*D5.y*W5*s5) * waveMask
     );
     vec3 T = vec3(
-      -(Q1*A1*D1.x*D1.y*W1*s1 + Q2*A2*D2.x*D2.y*W2*s2 + Q3*A3*D3.x*D3.y*W3*s3 + Q4*A4*D4.x*D4.y*W4*s4 + Q5*A5*D5.x*D5.y*W5*s5) * waveMask,
+      -(Q1*a1*D1.x*D1.y*W1*s1 + Q2*a2*D2.x*D2.y*W2*s2 + Q3*a3*D3.x*D3.y*W3*s3 + Q4*a4*D4.x*D4.y*W4*s4 + Q5*a5*D5.x*D5.y*W5*s5) * waveMask,
       (WA1*D1.y*c1 + WA2*D2.y*c2 + WA3*D3.y*c3 + WA4*D4.y*c4 + WA5*D5.y*c5) * waveMask,
-      1.0 - (Q1*A1*D1.y*D1.y*W1*s1 + Q2*A2*D2.y*D2.y*W2*s2 + Q3*A3*D3.y*D3.y*W3*s3 + Q4*A4*D4.y*D4.y*W4*s4 + Q5*A5*D5.y*D5.y*W5*s5) * waveMask
+      1.0 - (Q1*a1*D1.y*D1.y*W1*s1 + Q2*a2*D2.y*D2.y*W2*s2 + Q3*a3*D3.y*D3.y*W3*s3 + Q4*a4*D4.y*D4.y*W4*s4 + Q5*a5*D5.y*D5.y*W5*s5) * waveMask
     );
 
     // cross(T, B) — not cross(B, T) — so the normal faces +y (up).
-    // With B along +x and T along +z, cross(B, T) points down and inverts
-    // fresnel/specular/env reflection, producing bright splotches.
     vWaveNormal = normalize(cross(T, B));
     vWaveJacobian = B.x * T.z - B.z * T.x;
 
@@ -1236,6 +1242,17 @@ const waterFragmentShader = `
     float depthAbsorption = 1.0 - exp(-depth * 0.18);
     float depthAlpha = 1.0 - exp(-depth * 0.32);
 
+    // Sun-angle-dependent light path: light travels depth / sin(elevation)
+    // through the water column. Low sun = longer path = darker, more absorbed.
+    // Used by spectral Beer-Lambert base color and refraction in the PBR path.
+    float sunAngleFactor = 1.0 / max(sunDir.y, 0.12);
+    float lightPath = depth * sunAngleFactor;
+    // Spectral absorption coefficients: red dies first, blue last.
+    vec3 sigmaT = vec3(0.18, 0.10, 0.04);
+    vec3 spectralTransmittance = exp(-sigmaT * lightPath);
+    float spectralAbsorption = 1.0 - spectralTransmittance.g;
+    float spectralAlpha = 1.0 - exp(-lightPath * 0.32);
+
     vec3 finalColor;
     float finalAlpha;
 
@@ -1278,18 +1295,19 @@ const waterFragmentShader = `
       vec3 skyReflection = sampleEnvReflection(reflectedView, roughness, sunDir);
       float glancingReflection = (0.11 + pow(1.0 - NdotV, 1.7) * 0.46 + fresnel * 0.58) * mix(0.45, 1.0, daylight);
 
-      vec3 baseColor = mix(uShallowColor, uDeepColor, depthAbsorption);
+      vec3 baseColor = mix(uShallowColor, uDeepColor, 1.0 - spectralTransmittance);
 
-      // Refraction: blend refracted seabed into shallow water.
+      // Refraction: blend refracted seabed into shallow water. Fades out as
+      // spectral absorption climbs (deep water at low sun = opaque).
       if (uRefractionEnabled > 0.5) {
         float terrainHeight = uWaterLevel - vTerrainDepth;
         vec3 seabedColor = sampleRefractedSeabed(viewDirection, normal, terrainHeight);
-        baseColor = mix(seabedColor, baseColor, depthAbsorption);
+        baseColor = mix(seabedColor, baseColor, spectralAbsorption);
       }
 
-      baseColor = mix(baseColor, waterSample, mix(0.16, 0.055, depthAbsorption));
-      baseColor *= mix(1.08, 0.64, depthAbsorption) * mix(0.52, 1.0, daylight);
-      baseColor += ripple * mix(0.025, 0.010, depthAbsorption);
+      baseColor = mix(baseColor, waterSample, mix(0.16, 0.055, spectralAbsorption));
+      baseColor *= mix(1.08, 0.64, spectralAbsorption) * mix(0.52, 1.0, daylight);
+      baseColor += ripple * mix(0.025, 0.010, spectralAbsorption);
 
       // Volumetric SSS with Beer-Lambert depth absorption.
       vec3 subsurface = subsurfaceScattering(viewDirection, normal, L, NdotL, depthMix) * daylight;
@@ -1308,7 +1326,7 @@ const waterFragmentShader = `
       float foam = max(shore * smoothstep(0.18, 0.78, jacobianFoam + ripple * 0.42) * 0.68, jacobianFoam * 0.25) + textureFoam * 0.07;
       finalColor = mix(finalColor, uFoamColor, foam * 0.32);
 
-      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, depthAlpha) + fresnel * 0.16 + shore * 0.08;
+      finalAlpha = mix(uWaterAlphaShallow, uWaterAlphaDeep, spectralAlpha) + fresnel * 0.16 + shore * 0.08;
     } else {
       // --- Legacy water ---
       vec3 baseNormal = normalize(vWaveNormal + vec3((waterDetail - waterDetailX) * 1.35, 0.0, (waterDetail - waterDetailY) * 1.35));
@@ -1402,6 +1420,7 @@ function createWaterMaterial(textureLoader, options) {
     textureHeights = DEFAULT_TEXTURE_HEIGHTS,
     textureDensity = DEFAULT_TEXTURE_DENSITY,
     windDirection = [1, 0.3],
+    windSpeed = 5.0,
     environment = null,
     refractionEnabled = true,
   } = options;
@@ -1463,6 +1482,7 @@ function createWaterMaterial(textureLoader, options) {
       uSeabedUVScale: { value: textureDensity / DEFAULT_REGION_SIZE },
       uRefractionEnabled: { value: refractionEnabled ? 1.0 : 0.0 },
       uWindDirection: { value: new THREE.Vector2(windDirection[0], windDirection[1]).normalize() },
+      uWindSpeed: { value: windSpeed },
     },
     vertexShader: waterVertexShader,
     fragmentShader: waterFragmentShader,
@@ -1519,6 +1539,7 @@ export class TerrainRegion {
     this.environment = options.environment ?? null;
     this.refractionEnabled = options.refractionEnabled ?? true;
     this.windDirection = options.windDirection ?? [1, 0.3];
+    this.windSpeed = options.windSpeed ?? 5.0;
 
     this.heightMap = options.heightMap ?? new Float32Array(this.samples * this.samples);
     if (this.heightMap.length !== this.samples * this.samples) {
@@ -1613,6 +1634,7 @@ export class TerrainRegion {
       textureHeights: this.textureHeights,
       textureDensity: this.textureDensity,
       windDirection: this.windDirection,
+      windSpeed: this.windSpeed,
       environment: this.environment,
       refractionEnabled: this.refractionEnabled,
     });
@@ -2026,6 +2048,15 @@ export class TerrainRegion {
     const wu = this.waterMesh.material.uniforms;
     if (wu?.uWindDirection) {
       wu.uWindDirection.value.set(vec[0], vec[1]).normalize();
+    }
+    return this;
+  }
+
+  setWindSpeed(speed) {
+    this.windSpeed = Math.max(0, speed);
+    const wu = this.waterMesh.material.uniforms;
+    if (wu?.uWindSpeed) {
+      wu.uWindSpeed.value = this.windSpeed;
     }
     return this;
   }

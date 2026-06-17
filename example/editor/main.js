@@ -35,6 +35,10 @@ const sunAzimuthInput = document.querySelector('#sun-azimuth');
 const sunElevationInput = document.querySelector('#sun-elevation');
 const sunAzimuthValue = document.querySelector('#sun-azimuth-value');
 const sunElevationValue = document.querySelector('#sun-elevation-value');
+const windDirectionInput = document.querySelector('#wind-direction');
+const windSpeedInput = document.querySelector('#wind-speed');
+const windDirectionValue = document.querySelector('#wind-direction-value');
+const windSpeedValue = document.querySelector('#wind-speed-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
@@ -201,6 +205,17 @@ function bindPanel() {
   });
 
   updateSunPosition(Number(sunAzimuthInput.value), Number(sunElevationInput.value));
+
+  bindRange(windDirectionInput, windDirectionValue, (value) => {
+    const rad = THREE.MathUtils.degToRad(value);
+    terrain.setWindDirection([Math.cos(rad), Math.sin(rad)]);
+    return `${value}°`;
+  });
+
+  bindRange(windSpeedInput, windSpeedValue, (value) => {
+    terrain.setWindSpeed(value);
+    return value.toFixed(1);
+  });
 
   modeButtons.forEach((button) => {
     button.addEventListener('click', () => setBrushMode(button.dataset.mode));

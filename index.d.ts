@@ -117,6 +117,8 @@ export interface TerrainRegionOptions {
   refractionEnabled?: boolean;
   /** Wind direction (vec2) driving Gerstner wave propagation. Default [1, 0.3]. */
   windDirection?: [number, number] | THREE.Vector2;
+  /** Wind speed scaling wave amplitude and propagation rate. Default 5.0 (0 = calm, 15 = stormy). */
+  windSpeed?: number;
 }
 
 export interface PaintOptions {
@@ -167,6 +169,7 @@ export class TerrainRegion {
   environment: THREE.Texture | null;
   refractionEnabled: boolean;
   windDirection: [number, number];
+  windSpeed: number;
 
   constructor(options: TerrainRegionOptions);
 
@@ -209,6 +212,8 @@ export class TerrainRegion {
   setRefractionEnabled(enabled: boolean): this;
   /** Set wind direction driving Gerstner wave propagation. */
   setWindDirection(direction: [number, number] | THREE.Vector2): this;
+  /** Set wind speed scaling wave amplitude and propagation rate. */
+  setWindSpeed(speed: number): this;
 
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;
