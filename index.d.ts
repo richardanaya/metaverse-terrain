@@ -130,6 +130,10 @@ export interface TerrainRegionOptions {
   normalStrength?: number;
   /** Scales terrain ambient occlusion from MRAO maps. Default `1.0`. */
   terrainAOIntensity?: number;
+  /** Scales terrain metalness from MRAO maps. Default `1.0`. */
+  terrainMetalIntensity?: number;
+  /** Scales terrain roughness from MRAO maps. Default `1.0`. */
+  terrainRoughnessIntensity?: number;
   sunDirection?: [number, number, number];
   textureLoader?: THREE.TextureLoader;
   addBoundaryFrame?: boolean;
@@ -223,6 +227,8 @@ export class TerrainRegion {
   pbrTextures: PBRTextures | LoadedPBRTextures | null;
   normalStrength: number;
   terrainAOIntensity: number;
+  terrainMetalIntensity: number;
+  terrainRoughnessIntensity: number;
   textureLoader: THREE.TextureLoader;
   sunDirection: THREE.Vector3;
   onHeightmapChange: ((region: TerrainRegion) => void) | null;
@@ -294,6 +300,10 @@ export class TerrainRegion {
   setNormalStrength(strength: number): this;
   /** Scale terrain AO contribution from MRAO maps at runtime. */
   setTerrainAOIntensity(intensity: number): this;
+  /** Scale terrain metalness contribution from MRAO maps at runtime. */
+  setTerrainMetalIntensity(intensity: number): this;
+  /** Scale terrain roughness contribution from MRAO maps at runtime. */
+  setTerrainRoughnessIntensity(intensity: number): this;
   /** Toggle PBR water shading (specular, fresnel, normal detail). */
   setPBREnabled(enabled: boolean): this;
   /** Set water index of refraction for fresnel/specular (default `1.33`). */

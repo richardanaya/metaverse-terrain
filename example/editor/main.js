@@ -41,6 +41,12 @@ const waterLayerValue = document.querySelector('#water-layer-value');
 const textureDensityValue = document.querySelector('#texture-density-value');
 const hexTileRateValue = document.querySelector('#hex-tile-rate-value');
 const hexTileContrastValue = document.querySelector('#hex-tile-contrast-value');
+const terrainNormalIntensityInput = document.querySelector('#terrain-normal-intensity');
+const terrainNormalIntensityValue = document.querySelector('#terrain-normal-intensity-value');
+const terrainMetalIntensityInput = document.querySelector('#terrain-metal-intensity');
+const terrainMetalIntensityValue = document.querySelector('#terrain-metal-intensity-value');
+const terrainRoughnessIntensityInput = document.querySelector('#terrain-roughness-intensity');
+const terrainRoughnessIntensityValue = document.querySelector('#terrain-roughness-intensity-value');
 const terrainAOIntensityInput = document.querySelector('#terrain-ao-intensity');
 const terrainAOIntensityValue = document.querySelector('#terrain-ao-intensity-value');
 const grassStartValue = document.querySelector('#grass-start-value');
@@ -105,7 +111,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 
-const environmentReady = setupPBREnvironment(scene, renderer, { shadows: true });
+const environmentReady = setupPBREnvironment(scene, renderer, {
+  background: true,
+});
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 10, 0);
@@ -127,7 +135,7 @@ const movementForward = new THREE.Vector3();
 const movementDelta = new THREE.Vector3();
 const cameraOffset = new THREE.Vector3();
 
-let terrain, painting, sunLight;
+let terrain, painting;
 
 async function init() {
   // Load and pack PBR textures while the HDRI environment initializes.
@@ -135,8 +143,7 @@ async function init() {
     loadPBRTextureSet(PBR_TEXTURE_URLS),
     environmentReady,
   ]);
-  sunLight = envResult.sunLight;
-  
+
   terrain = new TerrainRegion({
     seed: 29,
     regionSize: Number(regionSizeInput.value),
@@ -150,11 +157,13 @@ async function init() {
     proceduralNormalStrength: Number(proceduralNormalStrengthInput.value),
     waterLevel: layerHeights.water,
     terrainAOIntensity: Number(terrainAOIntensityInput.value),
+    terrainMetalIntensity: Number(terrainMetalIntensityInput.value),
+    terrainRoughnessIntensity: Number(terrainRoughnessIntensityInput.value),
     textureDensity: Number(textureDensityInput.value),
     textureHeights: getTextureHeightsFromLayerSlider(),
     textures: TEXTURE_URLS,
     pbrTextures,
-    normalStrength: 1.0,
+    normalStrength: Number(terrainNormalIntensityInput.value),
     environment: envResult.envMap,
     onHeightmapChange: refreshHeightmapPreview,
   });
@@ -262,6 +271,21 @@ function bindPanel() {
 
   bindRange(terrainAOIntensityInput, terrainAOIntensityValue, (value) => {
     terrain.setTerrainAOIntensity(value);
+    return `${Math.round(value * 100)}%`;
+  });
+
+  bindRange(terrainNormalIntensityInput, terrainNormalIntensityValue, (value) => {
+    terrain.setNormalStrength(value);
+    return `${Math.round(value * 100)}%`;
+  });
+
+  bindRange(terrainMetalIntensityInput, terrainMetalIntensityValue, (value) => {
+    terrain.setTerrainMetalIntensity(value);
+    return `${Math.round(value * 100)}%`;
+  });
+
+  bindRange(terrainRoughnessIntensityInput, terrainRoughnessIntensityValue, (value) => {
+    terrain.setTerrainRoughnessIntensity(value);
     return `${Math.round(value * 100)}%`;
   });
 
@@ -376,10 +400,6 @@ function updateSunPosition(azimuthDeg, elevationDeg) {
     Math.sin(el),
     cosEl * Math.sin(az),
   );
-
-  if (sunLight) {
-    sunLight.position.copy(direction).multiplyScalar(200);
-  }
 
   terrain.setSunDirection(direction);
 }

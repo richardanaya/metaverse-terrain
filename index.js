@@ -2657,6 +2657,24 @@ export class TerrainRegion {
     return this;
   }
 
+  setTerrainMetalIntensity(intensity) {
+    this.terrainMetalIntensity = intensity;
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uTerrainMetalIntensity) {
+      shader.uniforms.uTerrainMetalIntensity.value = intensity;
+    }
+    return this;
+  }
+
+  setTerrainRoughnessIntensity(intensity) {
+    this.terrainRoughnessIntensity = intensity;
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uTerrainRoughnessIntensity) {
+      shader.uniforms.uTerrainRoughnessIntensity.value = intensity;
+    }
+    return this;
+  }
+
   setPBREnabled(enabled) {
     const value = enabled ? 1.0 : 0.0;
     if (this.waterMesh.material.uniforms?.uPBREnabled) {

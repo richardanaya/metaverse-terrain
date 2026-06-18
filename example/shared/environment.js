@@ -9,9 +9,6 @@ export async function setupPBREnvironment(scene, renderer, options = {}) {
     background = false,
     backgroundColor = 0x9fb7d5,
     exposure = 1.0,
-    sunIntensity = 3.0,
-    sunPosition = [80, 140, 60],
-    shadows = false,
   } = options;
 
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -21,23 +18,6 @@ export async function setupPBREnvironment(scene, renderer, options = {}) {
   if (!background && backgroundColor !== null) {
     scene.background = new THREE.Color(backgroundColor);
   }
-
-  const sunLight = new THREE.DirectionalLight(0xffffff, sunIntensity);
-  sunLight.name = 'Sun';
-  sunLight.position.set(...sunPosition);
-  sunLight.castShadow = shadows;
-
-  if (shadows) {
-    sunLight.shadow.mapSize.set(2048, 2048);
-    sunLight.shadow.camera.near = 1;
-    sunLight.shadow.camera.far = 520;
-    sunLight.shadow.camera.left = -220;
-    sunLight.shadow.camera.right = 220;
-    sunLight.shadow.camera.top = 220;
-    sunLight.shadow.camera.bottom = -220;
-  }
-
-  scene.add(sunLight);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   pmrem.compileEquirectangularShader();
@@ -56,10 +36,10 @@ export async function setupPBREnvironment(scene, renderer, options = {}) {
     // `samplerCube`. Sampling the equirect directly with `sampler2D` + equirect
     // UV mapping is version-robust and needs no extensions. The caller owns
     // the texture's lifetime (it must outlive the TerrainRegion that uses it).
-    return { environment, envMap: hdrTexture, sunLight };
+    return { environment, envMap: hdrTexture };
   } catch (error) {
-    console.warn('Failed to load HDRI environment map; falling back to directional sun only.', error);
-    return { environment: null, envMap: null, sunLight };
+    console.warn('Failed to load HDRI environment map.', error);
+    return { environment: null, envMap: null };
   } finally {
     pmrem.dispose();
   }
