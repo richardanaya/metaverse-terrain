@@ -1070,6 +1070,8 @@ function createTerrainMaterial(textureLoader, options) {
     pbrTextures,
     normalStrength = 1.0,
     terrainAOIntensity = 1.0,
+    terrainMetalIntensity = 1.0,
+    terrainRoughnessIntensity = 1.0,
     triplanarEnabled = true,
     wetSandEnabled = true,
     snowSparklesEnabled = true,
@@ -1129,6 +1131,8 @@ function createTerrainMaterial(textureLoader, options) {
     shader.uniforms.uWaterLevel = { value: waterLevel };
     shader.uniforms.uWaterEnabled = { value: waterEnabled ? 1 : 0 };
     shader.uniforms.uTerrainAOIntensity = { value: terrainAOIntensity };
+    shader.uniforms.uTerrainMetalIntensity = { value: terrainMetalIntensity };
+    shader.uniforms.uTerrainRoughnessIntensity = { value: terrainRoughnessIntensity };
     shader.uniforms.uTriplanarEnabled = { value: triplanarEnabled ? 1.0 : 0.0 };
     shader.uniforms.uWetSandEnabled = { value: wetSandEnabled ? 1.0 : 0.0 };
     shader.uniforms.uSnowSparklesEnabled = { value: snowSparklesEnabled ? 1.0 : 0.0 };
@@ -1174,6 +1178,8 @@ function createTerrainMaterial(textureLoader, options) {
       uniform float uWaterLevel;
       uniform float uWaterEnabled;
       uniform float uTerrainAOIntensity;
+      uniform float uTerrainMetalIntensity;
+      uniform float uTerrainRoughnessIntensity;
       uniform sampler2D uSandNormal;
       uniform sampler2D uGrassNormal;
       uniform sampler2D uRockNormal;
@@ -1452,7 +1458,7 @@ function createTerrainMaterial(textureLoader, options) {
         `#include <roughnessmap_fragment>
         {
           vec4 mraoForRoughness = terrainSampleMRAO(terrainWeights);
-          roughnessFactor = clamp(mraoForRoughness.g, 0.04, 1.0);
+          roughnessFactor = clamp(mraoForRoughness.g * uTerrainRoughnessIntensity, 0.04, 1.0);
           // #2: Wet sand is shinier (lower roughness) near shoreline.
           float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
           float wetnessR = wetEdgeR * uWetSandEnabled;
@@ -1465,7 +1471,8 @@ function createTerrainMaterial(textureLoader, options) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <metalnessmap_fragment>',
         `#include <metalnessmap_fragment>
-        metalnessFactor = 0.0;`
+        vec4 mraoForMetalness = terrainSampleMRAO(terrainWeights);
+        metalnessFactor = clamp(mraoForMetalness.r * uTerrainMetalIntensity, 0.0, 1.0);`
       );
     }
 
@@ -2168,6 +2175,8 @@ export class TerrainRegion {
     this.pbrTextures = options.pbrTextures ?? null;
     this.normalStrength = options.normalStrength ?? 1.0;
     this.terrainAOIntensity = options.terrainAOIntensity ?? 1.0;
+    this.terrainMetalIntensity = options.terrainMetalIntensity ?? 1.0;
+    this.terrainRoughnessIntensity = options.terrainRoughnessIntensity ?? 1.0;
     this.textureLoader = options.textureLoader ?? new THREE.TextureLoader();
     this.sunDirection = new THREE.Vector3(...(options.sunDirection ?? DEFAULT_SUN_DIRECTION)).normalize();
     this.onHeightmapChange = options.onHeightmapChange ?? null;
@@ -2285,6 +2294,8 @@ export class TerrainRegion {
       pbrTextures: this.pbrTextures,
       normalStrength: this.normalStrength,
       terrainAOIntensity: this.terrainAOIntensity,
+      terrainMetalIntensity: this.terrainMetalIntensity,
+      terrainRoughnessIntensity: this.terrainRoughnessIntensity,
       triplanarEnabled: this.triplanarEnabled,
       wetSandEnabled: this.wetSandEnabled,
       snowSparklesEnabled: this.snowSparklesEnabled,
