@@ -1462,7 +1462,7 @@ function createTerrainMaterial(textureLoader, options) {
           // #2: Wet sand is shinier (lower roughness) near shoreline.
           float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
           float wetnessR = wetEdgeR * uWetSandEnabled;
-          roughnessFactor = mix(roughnessFactor, 0.08, wetnessR * 0.7);
+          roughnessFactor = mix(roughnessFactor, clamp(0.08 * uTerrainRoughnessIntensity, 0.04, 1.0), wetnessR * 0.7);
           // #6: Cavity AO also raises roughness in crevices.
           roughnessFactor = mix(roughnessFactor, 1.0, (1.0 - cavityAO) * 0.3);
         }`
