@@ -43,8 +43,11 @@ const windDirectionValue = document.querySelector('#wind-direction-value');
 const windSpeedValue = document.querySelector('#wind-speed-value');
 const waterDarknessInput = document.querySelector('#water-darkness');
 const waterDarknessValue = document.querySelector('#water-darkness-value');
-const triplanarEnabledInput = document.querySelector('#triplanar-enabled');
 const wetSandEnabledInput = document.querySelector('#wet-sand-enabled');
+const shadowsEnabledInput = document.querySelector('#shadows-enabled');
+const castShadowsEnabledInput = document.querySelector('#cast-shadows-enabled');
+const wetSandHeightInput = document.querySelector('#wet-sand-height');
+const wetSandHeightValue = document.querySelector('#wet-sand-height-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
@@ -81,7 +84,7 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = shadowsEnabledInput.checked || castShadowsEnabledInput.checked;
 
 const environmentReady = setupPBREnvironment(scene, renderer, {
   background: true,
@@ -123,6 +126,9 @@ async function init() {
     terrainAOIntensity: Number(terrainAOIntensityInput.value),
     terrainMetalIntensity: Number(terrainMetalIntensityInput.value),
     terrainRoughnessIntensity: Number(terrainRoughnessIntensityInput.value),
+    wetSandHeight: Number(wetSandHeightInput.value),
+    shadowsEnabled: shadowsEnabledInput.checked,
+    castShadowsEnabled: castShadowsEnabledInput.checked,
     textureDensity: Number(textureDensityInput.value),
     textureHeights: getTextureHeightsFromLayerSlider(),
     textures: TEXTURE_URLS,
@@ -240,8 +246,21 @@ function bindPanel() {
     return 'Swamp';
   });
 
-  triplanarEnabledInput.addEventListener('change', () => terrain.setTriplanarEnabled(triplanarEnabledInput.checked));
   wetSandEnabledInput.addEventListener('change', () => terrain.setWetSandEnabled(wetSandEnabledInput.checked));
+
+  function syncShadowToggles() {
+    terrain.setShadowsEnabled(shadowsEnabledInput.checked);
+    terrain.setCastShadowsEnabled(castShadowsEnabledInput.checked);
+    renderer.shadowMap.enabled = shadowsEnabledInput.checked || castShadowsEnabledInput.checked;
+  }
+
+  shadowsEnabledInput.addEventListener('change', syncShadowToggles);
+  castShadowsEnabledInput.addEventListener('change', syncShadowToggles);
+
+  bindRange(wetSandHeightInput, wetSandHeightValue, (value) => {
+    terrain.setWetSandHeight(value);
+    return `${terrain.wetSandHeight.toFixed(2)}m`;
+  });
 
   modeButtons.forEach((button) => {
     button.addEventListener('click', () => setBrushMode(button.dataset.mode));

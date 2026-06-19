@@ -8,6 +8,7 @@ export const DEFAULT_SAMPLES: number;
 export const DEFAULT_MIN_HEIGHT: number;
 export const DEFAULT_MAX_HEIGHT: number;
 export const DEFAULT_WATER_LEVEL: number;
+export const DEFAULT_WET_SAND_HEIGHT: number;
 export const DEFAULT_TEXTURE_DENSITY: number;
 export const DEFAULT_SUN_DIRECTION: [number, number, number];
 export const TERRAIN_TEXTURE_LAYERS: readonly ['sand', 'grass', 'rock', 'snow', 'water'];
@@ -121,10 +122,14 @@ export interface TerrainRegionOptions {
   windSpeed?: number;
   /** Water darkness: 0 = pristine beach, 0.5 = ocean, 1 = swamp. Controls color tint, absorption, and opacity. */
   waterDarkness?: number;
-  /** Enable triplanar texture mapping on steep slopes. Default true. */
-  triplanarEnabled?: boolean;
   /** Enable wet sand darkening and shininess near shoreline. Default true. */
   wetSandEnabled?: boolean;
+  /** Height in meters above the waterline affected by wet sand. Default 0.25. */
+  wetSandHeight?: number;
+  /** Enable terrain shadow receiving. Default true. */
+  shadowsEnabled?: boolean;
+  /** Enable terrain shadow casting. Default false. */
+  castShadowsEnabled?: boolean;
 }
 
 export interface PaintOptions {
@@ -189,8 +194,10 @@ export class TerrainRegion {
   windDirection: [number, number];
   windSpeed: number;
   waterDarkness: number;
-  triplanarEnabled: boolean;
   wetSandEnabled: boolean;
+  wetSandHeight: number;
+  shadowsEnabled: boolean;
+  castShadowsEnabled: boolean;
 
   constructor(options: TerrainRegionOptions);
 
@@ -241,10 +248,14 @@ export class TerrainRegion {
   setWindSpeed(speed: number): this;
   /** Set water darkness (0 = pristine beach, 0.5 = ocean, 1 = swamp). */
   setWaterDarkness(darkness: number): this;
-  /** Toggle triplanar texture mapping on steep slopes. */
-  setTriplanarEnabled(enabled: boolean): this;
   /** Toggle wet sand darkening and shininess near shoreline. */
   setWetSandEnabled(enabled: boolean): this;
+  /** Set height in meters above the waterline affected by wet sand. */
+  setWetSandHeight(height: number): this;
+  /** Toggle terrain shadow receiving. */
+  setShadowsEnabled(enabled: boolean): this;
+  /** Toggle terrain shadow casting. */
+  setCastShadowsEnabled(enabled: boolean): this;
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;
   setBrushStrength(strength: number): this;

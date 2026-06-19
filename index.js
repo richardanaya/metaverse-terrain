@@ -23,6 +23,7 @@ export const DEFAULT_SAMPLES = DEFAULT_REGION_SIZE / DEFAULT_SAMPLE_SPACING + 1;
 export const DEFAULT_MIN_HEIGHT = -12;
 export const DEFAULT_MAX_HEIGHT = 52;
 export const DEFAULT_WATER_LEVEL = 21.5;
+export const DEFAULT_WET_SAND_HEIGHT = 0.25;
 export const DEFAULT_TEXTURE_DENSITY = 20;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
 
@@ -300,7 +301,8 @@ function terrainLayerWeightsAt(height, normalY, options) {
   const textureHeights = options.textureHeights ?? DEFAULT_TEXTURE_HEIGHTS;
   const blendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
   const slope = clamp((1 - normalY) * 2.4, 0, 1);
-  const wetEdge = (1 - smoothstep(options.waterLevel - 0.25, options.waterLevel + 1.25, height)) * (options.waterEnabled ? 1 : 0);
+  const wetSandHeight = options.wetSandHeight ?? DEFAULT_WET_SAND_HEIGHT;
+  const wetEdge = (1 - smoothstep(options.waterLevel - 0.25, options.waterLevel + wetSandHeight, height)) * (options.waterEnabled ? 1 : 0);
 
   let sandWeight = 1 - smoothstep(textureHeights.sandMax - blendWidth, textureHeights.sandMax, height);
   let grassWeight = smoothstep(textureHeights.grassStart - blendWidth, textureHeights.grassStart + blendWidth, height)
@@ -687,24 +689,6 @@ function getBrushCursorColor(mode) {
   return 0x58ff9a;
 }
 
-// --- Terrain texture sampling GLSL (injected into MeshStandardMaterial) ---
-
-const terrainTextureSamplingGLSL = `
-  // Triplanar sampling: blend 3 world-space projections by normal dominance.
-  // Fixes stretched textures on vertical cliffs without hash-based sampling.
-  vec3 terrainTriplanar(sampler2D tex, vec3 worldPos, vec3 worldNormal, float uvScale) {
-    vec3 nrm = normalize(worldNormal);
-    vec3 blend = pow(abs(nrm), vec3(4.0));
-    blend /= max(blend.x + blend.y + blend.z, 0.0001);
-
-    vec3 cXZ = texture2D(tex, worldPos.xz * uvScale).rgb;
-    vec3 cXY = texture2D(tex, worldPos.xy * uvScale).rgb;
-    vec3 cZY = texture2D(tex, worldPos.zy * uvScale).rgb;
-
-    return cXZ * blend.y + cXY * blend.z + cZY * blend.x;
-  }
-`;
-
 // --- Terrain material (MeshStandardMaterial + onBeforeCompile) ---
 
 function createTerrainMaterial(textureLoader, options) {
@@ -720,8 +704,8 @@ function createTerrainMaterial(textureLoader, options) {
     terrainAOIntensity = 1.0,
     terrainMetalIntensity = 1.0,
     terrainRoughnessIntensity = 1.0,
-    triplanarEnabled = true,
     wetSandEnabled = true,
+    wetSandHeight = DEFAULT_WET_SAND_HEIGHT,
     sunDirection = new THREE.Vector3(...DEFAULT_SUN_DIRECTION),
   } = options;
 
@@ -773,8 +757,8 @@ function createTerrainMaterial(textureLoader, options) {
     shader.uniforms.uTerrainAOIntensity = { value: terrainAOIntensity };
     shader.uniforms.uTerrainMetalIntensity = { value: terrainMetalIntensity };
     shader.uniforms.uTerrainRoughnessIntensity = { value: terrainRoughnessIntensity };
-    shader.uniforms.uTriplanarEnabled = { value: triplanarEnabled ? 1.0 : 0.0 };
     shader.uniforms.uWetSandEnabled = { value: wetSandEnabled ? 1.0 : 0.0 };
+    shader.uniforms.uWetSandHeight = { value: wetSandHeight };
     shader.uniforms.uSunDirection = { value: sunDirection };
 
     // Add PBR texture uniforms if available
@@ -792,7 +776,6 @@ function createTerrainMaterial(textureLoader, options) {
       varying float vTerrainHeight;
       varying vec3 vTerrainWorldNormal;
       varying vec2 vTerrainUv;
-      varying vec3 vTerrainWorldPos;
     `;
 
     const uniformDeclarations = `
@@ -821,8 +804,8 @@ function createTerrainMaterial(textureLoader, options) {
       uniform sampler2D uRockMRAO;
       uniform sampler2D uSnowMRAO;
       uniform float uNormalStrength;
-      uniform float uTriplanarEnabled;
       uniform float uWetSandEnabled;
+      uniform float uWetSandHeight;
       uniform vec3 uSunDirection;
     `;
 
@@ -831,10 +814,10 @@ function createTerrainMaterial(textureLoader, options) {
       // snow) by height bands and slope. No procedural noise — band edges are
       // clean smoothsteps over height/slope only, so this is constant-time per
       // fragment with no dependent reads or transcendental hashing.
-      vec4 terrainLayerWeights(float terrainHeight, vec3 terrainWorldNormal, vec3 worldPos) {
+      vec4 terrainLayerWeights(float terrainHeight, vec3 terrainWorldNormal) {
         vec3 geomNormal = normalize(terrainWorldNormal);
         float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
-        float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, terrainHeight)) * uWaterEnabled;
+        float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + uWetSandHeight, terrainHeight)) * uWaterEnabled;
 
         float sandWeight = 1.0 - smoothstep(uSandMax - uBlendWidth, uSandMax, terrainHeight);
         float grassWeight = smoothstep(uGrassStart - uBlendWidth, uGrassStart + uBlendWidth, terrainHeight)
@@ -900,7 +883,7 @@ function createTerrainMaterial(textureLoader, options) {
     `;
 
     shader.vertexShader = uniformDeclarations + varyings + shader.vertexShader;
-    shader.fragmentShader = uniformDeclarations + varyings + terrainTextureSamplingGLSL + terrainBlendGLSL + shader.fragmentShader;
+    shader.fragmentShader = uniformDeclarations + varyings + terrainBlendGLSL + shader.fragmentShader;
 
     // Pass height and world normal from vertex to fragment
     shader.vertexShader = shader.vertexShader.replace(
@@ -908,8 +891,7 @@ function createTerrainMaterial(textureLoader, options) {
       `#include <begin_vertex>
       vTerrainHeight = transformed.y;
       vTerrainWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-      vTerrainUv = uv;
-      vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+      vTerrainUv = uv;`
     );
 
 
@@ -918,42 +900,17 @@ function createTerrainMaterial(textureLoader, options) {
       '#include <color_fragment>',
       `// --- Multi-layer terrain texture blending ---
       vec2 terrainTiledUv = vTerrainUv * uTextureScale;
-      vec3 geomNormal = normalize(vTerrainWorldNormal);
-      float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
+      vec4 terrainWeights = terrainLayerWeights(vTerrainHeight, vTerrainWorldNormal);
 
-      vec4 terrainWeights = terrainLayerWeights(vTerrainHeight, vTerrainWorldNormal, vTerrainWorldPos);
-
-      // #1: Triplanar mapping on steep slopes, regular sampling on flat ground.
-      float triplanarBlend = smoothstep(0.35, 0.7, slope) * uTriplanarEnabled;
-      vec3 sandColor;
-      vec3 grassColor;
-      vec3 rockColor;
-      vec3 snowColor;
-      if (triplanarBlend > 0.01) {
-        float tpScale = uTextureScale / 256.0;
-        vec3 tpSand = terrainTriplanar(uSand, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 1.15);
-        vec3 tpGrass = terrainTriplanar(uGrass, vTerrainWorldPos, vTerrainWorldNormal, tpScale);
-        vec3 tpRock = terrainTriplanar(uRock, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.82);
-        vec3 tpSnow = terrainTriplanar(uSnow, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.66);
-        vec3 flatSand = texture2D(uSand, terrainTiledUv * 1.15).rgb;
-        vec3 flatGrass = texture2D(uGrass, terrainTiledUv).rgb;
-        vec3 flatRock = texture2D(uRock, terrainTiledUv * 0.82).rgb;
-        vec3 flatSnow = texture2D(uSnow, terrainTiledUv * 0.66).rgb;
-        sandColor = mix(flatSand, tpSand, triplanarBlend);
-        grassColor = mix(flatGrass, tpGrass, triplanarBlend);
-        rockColor = mix(flatRock, tpRock, triplanarBlend);
-        snowColor = mix(flatSnow, tpSnow, triplanarBlend);
-      } else {
-        sandColor = texture2D(uSand, terrainTiledUv * 1.15).rgb;
-        grassColor = texture2D(uGrass, terrainTiledUv).rgb;
-        rockColor = texture2D(uRock, terrainTiledUv * 0.82).rgb;
-        snowColor = texture2D(uSnow, terrainTiledUv * 0.66).rgb;
-      }
+      vec3 sandColor = texture2D(uSand, terrainTiledUv * 1.15).rgb;
+      vec3 grassColor = texture2D(uGrass, terrainTiledUv).rgb;
+      vec3 rockColor = texture2D(uRock, terrainTiledUv * 0.82).rgb;
+      vec3 snowColor = texture2D(uSnow, terrainTiledUv * 0.66).rgb;
 
       vec3 terrainAlbedo = sandColor * terrainWeights.x + grassColor * terrainWeights.y + rockColor * terrainWeights.z + snowColor * terrainWeights.w;
 
       // #2: Wet sand near shoreline — darken albedo, will lower roughness later.
-      float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
+      float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + uWetSandHeight, vTerrainHeight)) * uWaterEnabled;
       float wetness = wetEdge * uWetSandEnabled;
       terrainAlbedo = mix(terrainAlbedo, terrainAlbedo * 0.55, wetness * 0.7);
 
@@ -974,7 +931,7 @@ function createTerrainMaterial(textureLoader, options) {
         {
           roughnessFactor = clamp(terrainMRAO.g * uTerrainRoughnessIntensity, 0.04, 1.0);
           // Wet sand is shinier (lower roughness) near shoreline.
-          float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
+          float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + uWetSandHeight, vTerrainHeight)) * uWaterEnabled;
           float wetnessR = wetEdgeR * uWetSandEnabled;
           roughnessFactor = mix(roughnessFactor, clamp(0.08 * uTerrainRoughnessIntensity, 0.04, 1.0), wetnessR * 0.7);
         }`
@@ -1679,8 +1636,10 @@ export class TerrainRegion {
     this.windDirection = options.windDirection ?? [1, 0.3];
     this.windSpeed = options.windSpeed ?? 5.0;
     this.waterDarkness = options.waterDarkness ?? 0.5;
-    this.triplanarEnabled = options.triplanarEnabled ?? true;
     this.wetSandEnabled = options.wetSandEnabled ?? true;
+    this.wetSandHeight = options.wetSandHeight ?? DEFAULT_WET_SAND_HEIGHT;
+    this.shadowsEnabled = options.shadowsEnabled ?? true;
+    this.castShadowsEnabled = options.castShadowsEnabled ?? false;
 
     this.heightMap = options.heightMap ?? new Float32Array(this.samples * this.samples);
     if (this.heightMap.length !== this.samples * this.samples) {
@@ -1738,6 +1697,7 @@ export class TerrainRegion {
       samples: this.samples,
       waterLevel: this.waterLevel,
       waterEnabled: this.waterEnabled,
+      wetSandHeight: this.wetSandHeight,
       textureHeights: this.textureHeights,
       textureBlendWidth: this.textureBlendWidth,
       seed: this.seed,
@@ -1750,6 +1710,7 @@ export class TerrainRegion {
       samples: this.samples,
       waterLevel: this.waterLevel,
       waterEnabled: this.waterEnabled,
+      wetSandHeight: this.wetSandHeight,
       textureHeights: this.textureHeights,
       textureBlendWidth: this.textureBlendWidth,
       seed: this.seed,
@@ -1770,13 +1731,13 @@ export class TerrainRegion {
       terrainAOIntensity: this.terrainAOIntensity,
       terrainMetalIntensity: this.terrainMetalIntensity,
       terrainRoughnessIntensity: this.terrainRoughnessIntensity,
-      triplanarEnabled: this.triplanarEnabled,
       wetSandEnabled: this.wetSandEnabled,
+      wetSandHeight: this.wetSandHeight,
       sunDirection: this.sunDirection,
     });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.receiveShadow = true;
-    mesh.castShadow = false;
+    mesh.receiveShadow = this.shadowsEnabled;
+    mesh.castShadow = this.castShadowsEnabled;
     return mesh;
   }
 
@@ -2286,21 +2247,36 @@ export class TerrainRegion {
     return this;
   }
 
-  setTriplanarEnabled(enabled) {
-    this.triplanarEnabled = Boolean(enabled);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uTriplanarEnabled) {
-      shader.uniforms.uTriplanarEnabled.value = this.triplanarEnabled ? 1.0 : 0.0;
-    }
-    return this;
-  }
-
   setWetSandEnabled(enabled) {
     this.wetSandEnabled = Boolean(enabled);
     const shader = this.terrainMesh.material.userData?.shader;
     if (shader?.uniforms?.uWetSandEnabled) {
       shader.uniforms.uWetSandEnabled.value = this.wetSandEnabled ? 1.0 : 0.0;
     }
+    return this;
+  }
+
+  setWetSandHeight(height) {
+    this.wetSandHeight = Math.max(0, height);
+    const shader = this.terrainMesh.material.userData?.shader;
+    if (shader?.uniforms?.uWetSandHeight) {
+      shader.uniforms.uWetSandHeight.value = this.wetSandHeight;
+    }
+    this.emitHeightmapChange();
+    return this;
+  }
+
+  setShadowsEnabled(enabled) {
+    this.shadowsEnabled = Boolean(enabled);
+    this.terrainMesh.receiveShadow = this.shadowsEnabled;
+    this.terrainMesh.material.needsUpdate = true;
+    return this;
+  }
+
+  setCastShadowsEnabled(enabled) {
+    this.castShadowsEnabled = Boolean(enabled);
+    this.terrainMesh.castShadow = this.castShadowsEnabled;
+    this.terrainMesh.material.needsUpdate = true;
     return this;
   }
 
