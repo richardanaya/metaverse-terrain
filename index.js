@@ -963,8 +963,22 @@ const hexTilingGLSL = `
   };
 
   vec2 hexHash(vec2 p) {
+    // Sin-free integer hash (was fract(sin(mat2*p) * 43758)). The old form's
+    // transcendentals of large arguments are 2-4x slower on ANGLE/D3D11 and
+    // mobile GL, and hexHash runs inside every hexTileColor (12-48x per
+    // fragment on the terrain hot path). p is integer-valued (from ivec2
+    // vertex ids), so uint hashing is exact. GLSL3 (WebGL2) path; the GLSL1
+    // fallback keeps the old sin hash so WebGL1 contexts still compile.
+#if __VERSION__ >= 300
+    uint h = uint(ivec2(p).x) * 747796405u + uint(ivec2(p).y) * 2891336453u + 374761393u;
+    h = (h ^ (h >> 16u)) * 0x7feb352du;
+    h = (h ^ (h >> 15u)) * 0x846ca68bu;
+    h = h ^ (h >> 16u);
+    return vec2(float(h & 0xFFFFu), float(h >> 16u)) * (1.0 / 65535.0);
+#else
     vec2 r = mat2(127.1, 269.5, 311.7, 183.3) * p;
     return fract(sin(r) * 43758.5453);
+#endif
   }
 
   vec2 makeCenST(ivec2 vertex) {
@@ -1203,7 +1217,22 @@ function createTerrainMaterial(textureLoader, options) {
     const terrainBlendGLSL = `
       // Cheap hash-based value noise for perturbing layer transitions.
       float terrainHash(vec2 p) {
+        // Sin-free integer hash (was fract(sin(dot(p, vec2(127.1,311.7))) * 43758)).
+        // p is integer-valued (callers pass floor(...)), so uint hashing is exact.
+        // terrainValueNoise calls this many times per fragment — perturbedHeight,
+        // cavityAO (3x), snowSparkles, moisture, and the procedural bump (9x via
+        // 3 finite-difference samples) — so removing the sin is a large per-fragment
+        // saving on ANGLE/D3D11 and mobile GL. GLSL3 (WebGL2) path; GLSL1 fallback
+        // keeps the old sin hash so WebGL1 contexts still compile.
+#if __VERSION__ >= 300
+        uint h = uint(ivec2(p).x) * 747796405u + uint(ivec2(p).y) * 2891336453u + 374761393u;
+        h = (h ^ (h >> 16u)) * 0x7feb352du;
+        h = (h ^ (h >> 15u)) * 0x846ca68bu;
+        h = h ^ (h >> 16u);
+        return float(h) * (1.0 / 4294967296.0);
+#else
         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+#endif
       }
       float terrainValueNoise(vec2 p) {
         vec2 i = floor(p);
@@ -1456,9 +1485,12 @@ function createTerrainMaterial(textureLoader, options) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
+        // Sample packed metal/roughness/AO once and reuse for metalness + AO below.
+        // The old code called terrainSampleMRAO three separate times (12 texture
+        // samples/fragment); this cuts it to one call (4 samples), identical result.
+        vec4 terrainMRAO = terrainSampleMRAO(terrainWeights);
         {
-          vec4 mraoForRoughness = terrainSampleMRAO(terrainWeights);
-          roughnessFactor = clamp(mraoForRoughness.g * uTerrainRoughnessIntensity, 0.04, 1.0);
+          roughnessFactor = clamp(terrainMRAO.g * uTerrainRoughnessIntensity, 0.04, 1.0);
           // #2: Wet sand is shinier (lower roughness) near shoreline.
           float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
           float wetnessR = wetEdgeR * uWetSandEnabled;
@@ -1471,8 +1503,7 @@ function createTerrainMaterial(textureLoader, options) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <metalnessmap_fragment>',
         `#include <metalnessmap_fragment>
-        vec4 mraoForMetalness = terrainSampleMRAO(terrainWeights);
-        metalnessFactor = clamp(mraoForMetalness.r * uTerrainMetalIntensity, 0.0, 1.0);`
+        metalnessFactor = clamp(terrainMRAO.r * uTerrainMetalIntensity, 0.0, 1.0);`
       );
     }
 
@@ -1501,10 +1532,10 @@ function createTerrainMaterial(textureLoader, options) {
         '#include <aomap_fragment>',
         `#include <aomap_fragment>
 
-        // Blend terrain PBR AO
+        // Blend terrain PBR AO (reuses the single terrainMRAO sample from the
+        // roughness injection above — no extra texture fetch).
         {
-          vec4 mrao = terrainSampleMRAO(terrainWeights);
-          float terrainAO = mix(1.0, clamp(mrao.b, 0.0, 1.0), clamp(uTerrainAOIntensity, 0.0, 2.0));
+          float terrainAO = mix(1.0, clamp(terrainMRAO.b, 0.0, 1.0), clamp(uTerrainAOIntensity, 0.0, 2.0));
           reflectedLight.indirectDiffuse *= terrainAO;
         }`
       );
