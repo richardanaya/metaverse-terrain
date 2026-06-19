@@ -1,6 +1,6 @@
 {
   "name": "metaverse-terrain",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "ES module Three.js terrain heightfield with PBR texture blending, animated water, and brush editing",
   "type": "module",
   "sideEffects": false,
