@@ -3,7 +3,7 @@
 
 # metaverse-terrain
 
-Three.js terrain library with hex-tiled texture blending, optional PBR maps (normal, metallic, roughness, AO), animated water, and heightmap brush editing.
+Three.js terrain library with PBR texture blending, animated water, and heightmap brush editing.
 
 `TerrainRegion` owns the terrain mesh, shaders, and height data. Your app owns the scene graph, camera, input, and raycasting.
 
@@ -236,7 +236,6 @@ const region = new TerrainRegion({
   seed: 29,
   waterLevel: 28,
   textureDensity: 10,
-  hexTileRate: 0.5,
 });
 
 region.setBrushMode('raise');
@@ -311,7 +310,7 @@ Omit `pbrTextures` for albedo-only rendering.
 | `paintAt(point, options?)` | Apply brush and emit `onHeightmapChange` |
 | `setBrushMode` / `setBrushRadius` / `setBrushStrength` | Brush settings |
 | `setWaterLevel` / `setWaterEnabled` | Water plane |
-| `setTextureDensity` / `setHexTileRate` / `setHexTileContrast` | Shader tiling |
+| `setTextureDensity` | Texture tiling density |
 | `setTextureHeights` | Sand/grass/rock/snow height bands |
 | `setNormalStrength` / `setTerrainAOIntensity` | PBR normal and AO intensity |
 | `setPBREnabled` / `setWaterIOR` | PBR water toggle and index of refraction |
@@ -339,7 +338,3 @@ python3 -m http.server 8080
 MIT — Richard Anaya. See [LICENSE](LICENSE).
 
 Reference textures: MIT — Richard Anaya. See [ASSET_LICENSES.md](ASSET_LICENSES.md).
-
-## References
-
-Hex-tiling based on Morten S. Mikkelsen, [*Practical Real-Time Hex-Tiling*](https://jcgt.org/published/0011/03/05/), JCGT Vol. 11 No. 2, 2022.

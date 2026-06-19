@@ -24,18 +24,7 @@ export const DEFAULT_MIN_HEIGHT = -12;
 export const DEFAULT_MAX_HEIGHT = 52;
 export const DEFAULT_WATER_LEVEL = 21.5;
 export const DEFAULT_TEXTURE_DENSITY = 20;
-export const DEFAULT_HEX_TILE_RATE = 0.5;
-export const DEFAULT_HEX_TILE_CONTRAST = 0.75;
 export const DEFAULT_SUN_DIRECTION = [0.45, 0.86, 0.24];
-export const DEFAULT_RENDER_SUBDIVISIONS = 1;
-export const MAX_RENDER_SUBDIVISIONS = 4;
-export const DEFAULT_TERRAIN_DETAIL_STRENGTH = 0;
-export const DEFAULT_TERRAIN_CLIFF_STRENGTH = 0;
-export const DEFAULT_TERRAIN_MICRO_DETAIL_STRENGTH = 1;
-export const DEFAULT_BIOME_VARIATION = 0;
-export const DEFAULT_SHORELINE_STRENGTH = 0;
-export const DEFAULT_PROCEDURAL_NORMAL_STRENGTH = 0.25;
-export const DEFAULT_TERRAIN_QUALITY = 'low';
 
 export const TERRAIN_TEXTURE_LAYERS = ['sand', 'grass', 'rock', 'snow', 'water'];
 export const PBR_CHANNELS = ['metal', 'roughness', 'normal', 'ao'];
@@ -71,25 +60,6 @@ function indexFor(x, z, samples) {
 
 function samplesForRegionSize(regionSize, sampleSpacing = DEFAULT_SAMPLE_SPACING) {
   return Math.round(regionSize / sampleSpacing) + 1;
-}
-
-function normalizeRenderSubdivisions(value = DEFAULT_RENDER_SUBDIVISIONS) {
-  const numericValue = Number.isFinite(Number(value)) ? Number(value) : DEFAULT_RENDER_SUBDIVISIONS;
-  return Math.max(1, Math.min(MAX_RENDER_SUBDIVISIONS, Math.round(numericValue)));
-}
-
-function renderSubdivisionsForQuality(quality = DEFAULT_TERRAIN_QUALITY) {
-  if (quality === 'medium') return 2;
-  if (quality === 'high') return 3;
-  if (quality === 'ultra') return 4;
-  return 1;
-}
-
-function terrainQualityForSubdivisions(subdivisions) {
-  if (subdivisions >= 4) return 'ultra';
-  if (subdivisions >= 3) return 'high';
-  if (subdivisions >= 2) return 'medium';
-  return 'low';
 }
 
 function inferSamplesFromHeightMap(heightMap) {
@@ -296,11 +266,6 @@ async function loadPBRTexture(textureLoader, source) {
 
 // --- geometry ---
 
-function renderSamplesFor(samples, renderSubdivisions = DEFAULT_RENDER_SUBDIVISIONS) {
-  const subdivisions = normalizeRenderSubdivisions(renderSubdivisions);
-  return (samples - 1) * subdivisions + 1;
-}
-
 function sampleHeightMap(heightMap, samples, sampleX, sampleZ) {
   const x = clamp(sampleX, 0, samples - 1);
   const z = clamp(sampleZ, 0, samples - 1);
@@ -328,64 +293,20 @@ function estimateHeightNormalY(heightMap, options, sampleX, sampleZ) {
   const dz = (hU - hD) / (step * 2);
   return 1 / Math.hypot(dx, 1, dz);
 }
-
-function terrainHash2(x, z, seed) {
-  const n = Math.sin(x * 127.1 + z * 311.7 + seed * 17.17) * 43758.5453123;
-  return n - Math.floor(n);
-}
-
-function terrainValueNoise(x, z, seed) {
-  const x0 = Math.floor(x);
-  const z0 = Math.floor(z);
-  const tx = x - x0;
-  const tz = z - z0;
-  const sx = tx * tx * (3 - 2 * tx);
-  const sz = tz * tz * (3 - 2 * tz);
-  const a = terrainHash2(x0, z0, seed);
-  const b = terrainHash2(x0 + 1, z0, seed);
-  const c = terrainHash2(x0, z0 + 1, seed);
-  const d = terrainHash2(x0 + 1, z0 + 1, seed);
-  return lerp(lerp(a, b, sx), lerp(c, d, sx), sz);
-}
-
-function terrainFBM(x, z, seed, octaves = 3) {
-  let value = 0;
-  let amplitude = 0.5;
-  let frequency = 1;
-  let totalAmplitude = 0;
-  for (let octave = 0; octave < octaves; octave += 1) {
-    value += terrainValueNoise(x * frequency, z * frequency, seed + octave * 19.19) * amplitude;
-    totalAmplitude += amplitude;
-    amplitude *= 0.5;
-    frequency *= 2;
-  }
-  return value / totalAmplitude;
-}
-
-function localMoistureAt(worldX, worldZ, options) {
-  const moisture = options.moisture ?? 0.5;
-  const variation = options.biomeVariation ?? DEFAULT_BIOME_VARIATION;
-  if (variation <= 0) return moisture;
-
-  const seed = options.seed ?? 0;
-  const broad = terrainFBM(worldX * 0.015 + 17, worldZ * 0.015 - 31, seed + 43, 3) - 0.5;
-  const patch = terrainFBM(worldX * 0.055 - 11, worldZ * 0.055 + 7, seed + 59, 2) - 0.5;
-  return clamp(moisture + (broad * 0.75 + patch * 0.25) * variation, 0, 1);
-}
-
-function terrainLayerWeightsAt(height, normalY, options, worldX = 0, worldZ = 0) {
+// Terrain layer weights (CPU mirror of the GLSL terrainLayerWeights), used by
+// the heightmap-preview/brush code. No procedural noise: pure height-band +
+// slope smoothsteps, matching the simplified shader path.
+function terrainLayerWeightsAt(height, normalY, options) {
   const textureHeights = options.textureHeights ?? DEFAULT_TEXTURE_HEIGHTS;
   const blendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
-  const moisture = localMoistureAt(worldX, worldZ, options);
   const slope = clamp((1 - normalY) * 2.4, 0, 1);
   const wetEdge = (1 - smoothstep(options.waterLevel - 0.25, options.waterLevel + 1.25, height)) * (options.waterEnabled ? 1 : 0);
-  const snowStart = textureHeights.snowStart - (moisture - 0.5) * 4;
 
   let sandWeight = 1 - smoothstep(textureHeights.sandMax - blendWidth, textureHeights.sandMax, height);
   let grassWeight = smoothstep(textureHeights.grassStart - blendWidth, textureHeights.grassStart + blendWidth, height)
     * (1 - smoothstep(textureHeights.grassEnd - blendWidth, textureHeights.grassEnd + blendWidth, height));
   let rockWeight = smoothstep(textureHeights.rockStart - blendWidth, textureHeights.rockStart + blendWidth, height) + slope * 0.35;
-  let snowWeight = smoothstep(snowStart - blendWidth, snowStart + blendWidth, height) * (1 - slope * 0.25);
+  let snowWeight = smoothstep(textureHeights.snowStart - blendWidth, textureHeights.snowStart + blendWidth, height) * (1 - slope * 0.25);
 
   sandWeight += wetEdge * 0.6;
   grassWeight *= 1 + slope * 0.75;
@@ -396,87 +317,24 @@ function terrainLayerWeightsAt(height, normalY, options, worldX = 0, worldZ = 0)
   return weights.map((weight) => weight / total);
 }
 
-function shorelineShelfHeight(height, normalY, options) {
-  const strength = options.shorelineStrength ?? DEFAULT_SHORELINE_STRENGTH;
-  if (strength <= 0 || !options.waterEnabled) return height;
-
-  const waterLevel = options.waterLevel ?? DEFAULT_WATER_LEVEL;
-  const shoreMask = 1 - smoothstep(0, 5.5, Math.abs(height - waterLevel));
-  if (shoreMask <= 0) return height;
-
-  const shelfTarget = waterLevel - 0.35 + (height - waterLevel) * 0.28;
-  const flatBias = 0.45 + normalY * 0.55;
-  return lerp(height, shelfTarget, shoreMask * strength * flatBias);
-}
-
-function terrainDetailDisplacement(worldX, worldZ, height, normalY, options) {
-  const strength = options.terrainDetailStrength ?? DEFAULT_TERRAIN_DETAIL_STRENGTH;
-  if (strength <= 0) return 0;
-
-  const seed = options.seed ?? 0;
-  const microStrength = options.terrainMicroDetailStrength ?? DEFAULT_TERRAIN_MICRO_DETAIL_STRENGTH;
-  const cliffStrength = options.terrainCliffStrength ?? DEFAULT_TERRAIN_CLIFF_STRENGTH;
-  const shorelineStrength = options.shorelineStrength ?? DEFAULT_SHORELINE_STRENGTH;
-  const slope = clamp((1 - normalY) * 2.4, 0, 1);
-  const [sandWeight, grassWeight, rockWeight, snowWeight] = terrainLayerWeightsAt(height, normalY, options, worldX, worldZ);
-
-  const sandRipples = (
-    Math.sin(worldX * 0.68 + worldZ * 0.18 + seed * 0.07) * 0.12
-    + Math.sin(worldX * 1.24 - worldZ * 0.31 + seed * 0.13) * 0.04
-  ) * (1 - slope * 0.5) * (0.45 + shorelineStrength * 0.55);
-
-  const grassNoise = (terrainFBM(worldX * 0.18, worldZ * 0.18, seed + 7, 3) - 0.5) * 0.34;
-  const rockRidge = (1 - Math.abs(terrainFBM(worldX * 0.32 + 23, worldZ * 0.32 - 19, seed + 13, 4) * 2 - 1)) * 1.05 - 0.28;
-  const snowSoft = (terrainFBM(worldX * 0.11 - 31, worldZ * 0.11 + 17, seed + 29, 2) - 0.5) * 0.12;
-  const cliffMask = slope * rockWeight;
-  const fractureA = 1 - Math.abs(terrainFBM(worldX * 0.58 + 37, worldZ * 0.58 - 41, seed + 71, 4) * 2 - 1);
-  const fractureB = terrainFBM(worldX * 1.15 - 13, worldZ * 1.15 + 29, seed + 97, 3);
-  const cliffLedges = Math.sin(height * 1.65 + fractureB * 5.2) * 0.16;
-  const cliffBreakup = (fractureA * 0.88 + cliffLedges - 0.28) * cliffMask * cliffStrength;
-
-  return strength * (
-    (sandRipples * sandWeight
-      + grassNoise * grassWeight
-      + rockRidge * rockWeight * (0.4 + slope * 0.9)
-      + snowSoft * snowWeight) * microStrength
-    + cliffBreakup
-  );
-}
-
-function evaluateTerrainRenderHeight(heightMap, options, renderX, renderZ, renderSamples) {
-  const { samples, regionSize } = options;
-  const halfRegion = regionSize / 2;
-  const tX = renderX / (renderSamples - 1);
-  const tZ = renderZ / (renderSamples - 1);
-  const sampleX = tX * (samples - 1);
-  const sampleZ = tZ * (samples - 1);
-  const worldX = tX * regionSize - halfRegion;
-  const worldZ = tZ * regionSize - halfRegion;
-  const baseHeight = sampleHeightMap(heightMap, samples, sampleX, sampleZ);
-  const normalY = estimateHeightNormalY(heightMap, options, sampleX, sampleZ);
-  const shelvedHeight = shorelineShelfHeight(baseHeight, normalY, options);
-  return shelvedHeight + terrainDetailDisplacement(worldX, worldZ, shelvedHeight, normalY, options);
-}
-
 function createTerrainGeometry(heightMap, options) {
-  const { regionSize, samples, renderSubdivisions = DEFAULT_RENDER_SUBDIVISIONS } = options;
-  const renderSamples = renderSamplesFor(samples, renderSubdivisions);
+  const { regionSize, samples } = options;
   const halfRegion = regionSize / 2;
   const geometry = new THREE.BufferGeometry();
-  const vertexCount = renderSamples * renderSamples;
+  const vertexCount = samples * samples;
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
-  const indices = new Uint32Array((renderSamples - 1) * (renderSamples - 1) * 6);
-  const step = regionSize / (renderSamples - 1);
+  const indices = new Uint32Array((samples - 1) * (samples - 1) * 6);
+  const step = regionSize / (samples - 1);
 
-  for (let z = 0; z < renderSamples; z += 1) {
-    for (let x = 0; x < renderSamples; x += 1) {
-      const index = indexFor(x, z, renderSamples);
+  for (let z = 0; z < samples; z += 1) {
+    for (let x = 0; x < samples; x += 1) {
+      const index = indexFor(x, z, samples);
       const positionIndex = index * 3;
       const uvIndex = index * 2;
 
       positions[positionIndex] = x * step - halfRegion;
-      positions[positionIndex + 1] = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+      positions[positionIndex + 1] = heightMap[index];
       positions[positionIndex + 2] = z * step - halfRegion;
       uvs[uvIndex] = (x * step) / DEFAULT_REGION_SIZE;
       uvs[uvIndex + 1] = (z * step) / DEFAULT_REGION_SIZE;
@@ -484,12 +342,12 @@ function createTerrainGeometry(heightMap, options) {
   }
 
   let indexPointer = 0;
-  for (let z = 0; z < renderSamples - 1; z += 1) {
-    for (let x = 0; x < renderSamples - 1; x += 1) {
-      const a = indexFor(x, z, renderSamples);
-      const b = indexFor(x + 1, z, renderSamples);
-      const c = indexFor(x, z + 1, renderSamples);
-      const d = indexFor(x + 1, z + 1, renderSamples);
+  for (let z = 0; z < samples - 1; z += 1) {
+    for (let x = 0; x < samples - 1; x += 1) {
+      const a = indexFor(x, z, samples);
+      const b = indexFor(x + 1, z, samples);
+      const c = indexFor(x, z + 1, samples);
+      const d = indexFor(x + 1, z + 1, samples);
 
       indices[indexPointer] = a;
       indices[indexPointer + 1] = c;
@@ -504,30 +362,28 @@ function createTerrainGeometry(heightMap, options) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.userData.renderSamples = renderSamples;
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
 }
 
 function createWaterGeometry(heightMap, options) {
-  const { regionSize, samples, waterLevel, renderSubdivisions = DEFAULT_RENDER_SUBDIVISIONS } = options;
-  const renderSamples = renderSamplesFor(samples, renderSubdivisions);
+  const { regionSize, samples, waterLevel } = options;
   const halfRegion = regionSize / 2;
   const geometry = new THREE.BufferGeometry();
-  const vertexCount = renderSamples * renderSamples;
+  const vertexCount = samples * samples;
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
   const waterDepth = new Float32Array(vertexCount);
-  const indices = new Uint32Array((renderSamples - 1) * (renderSamples - 1) * 6);
-  const step = regionSize / (renderSamples - 1);
+  const indices = new Uint32Array((samples - 1) * (samples - 1) * 6);
+  const step = regionSize / (samples - 1);
 
-  for (let z = 0; z < renderSamples; z += 1) {
-    for (let x = 0; x < renderSamples; x += 1) {
-      const index = indexFor(x, z, renderSamples);
+  for (let z = 0; z < samples; z += 1) {
+    for (let x = 0; x < samples; x += 1) {
+      const index = indexFor(x, z, samples);
       const positionIndex = index * 3;
       const uvIndex = index * 2;
-      const terrainHeight = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+      const terrainHeight = heightMap[index];
 
       positions[positionIndex] = x * step - halfRegion;
       positions[positionIndex + 1] = 0;
@@ -539,12 +395,12 @@ function createWaterGeometry(heightMap, options) {
   }
 
   let indexPointer = 0;
-  for (let z = 0; z < renderSamples - 1; z += 1) {
-    for (let x = 0; x < renderSamples - 1; x += 1) {
-      const a = indexFor(x, z, renderSamples);
-      const b = indexFor(x + 1, z, renderSamples);
-      const c = indexFor(x, z + 1, renderSamples);
-      const d = indexFor(x + 1, z + 1, renderSamples);
+  for (let z = 0; z < samples - 1; z += 1) {
+    for (let x = 0; x < samples - 1; x += 1) {
+      const a = indexFor(x, z, samples);
+      const b = indexFor(x + 1, z, samples);
+      const c = indexFor(x, z + 1, samples);
+      const d = indexFor(x + 1, z + 1, samples);
 
       indices[indexPointer] = a;
       indices[indexPointer + 1] = c;
@@ -560,7 +416,6 @@ function createWaterGeometry(heightMap, options) {
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geometry.setAttribute('waterDepth', new THREE.BufferAttribute(waterDepth, 1));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.userData.renderSamples = renderSamples;
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -596,126 +451,15 @@ function generateHeightMap(heightMap, options) {
   }
 }
 
-function applyErosionToHeightMap(heightMap, options) {
-  const {
-    samples,
-    regionSize,
-    minHeight = DEFAULT_MIN_HEIGHT,
-    maxHeight = DEFAULT_MAX_HEIGHT,
-    seed = 0,
-  } = options;
-  const iterations = Math.max(1, Math.round(options.iterations ?? 1));
-  const strength = clamp(options.strength ?? 0.5, 0, 2);
-  if (strength <= 0) return;
-
-  const length = samples * samples;
-  const halfRegion = regionSize / 2;
-  const step = regionSize / (samples - 1);
-  const erosionOptions = { samples, regionSize };
-
-  for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const flow = new Float32Array(length);
-
-    for (let z = 1; z < samples - 1; z += 1) {
-      for (let x = 1; x < samples - 1; x += 1) {
-        const worldX = x * step - halfRegion;
-        const worldZ = z * step - halfRegion;
-        let water = 0.45 + terrainValueNoise(worldX * 0.025, worldZ * 0.025, seed + iteration * 23) * 0.75;
-        let cx = x;
-        let cz = z;
-
-        for (let trace = 0; trace < 28; trace += 1) {
-          const idx = indexFor(cx, cz, samples);
-          const currentHeight = heightMap[idx];
-          let bestX = cx;
-          let bestZ = cz;
-          let bestDrop = 0;
-
-          flow[idx] += water;
-
-          for (let oz = -1; oz <= 1; oz += 1) {
-            for (let ox = -1; ox <= 1; ox += 1) {
-              if (ox === 0 && oz === 0) continue;
-              const nx = cx + ox;
-              const nz = cz + oz;
-              if (nx <= 0 || nz <= 0 || nx >= samples - 1 || nz >= samples - 1) continue;
-
-              const neighborHeight = heightMap[indexFor(nx, nz, samples)];
-              const drop = currentHeight - neighborHeight;
-              if (drop > bestDrop) {
-                bestDrop = drop;
-                bestX = nx;
-                bestZ = nz;
-              }
-            }
-          }
-
-          if (bestDrop <= 0.02) break;
-          cx = bestX;
-          cz = bestZ;
-          water *= 0.88 + Math.min(bestDrop * 0.018, 0.14);
-        }
-      }
-    }
-
-    let maxFlow = 0.0001;
-    for (let i = 0; i < length; i += 1) {
-      maxFlow = Math.max(maxFlow, flow[i]);
-    }
-
-    const eroded = new Float32Array(heightMap);
-    for (let z = 1; z < samples - 1; z += 1) {
-      for (let x = 1; x < samples - 1; x += 1) {
-        const idx = indexFor(x, z, samples);
-        const worldX = x * step - halfRegion;
-        const worldZ = z * step - halfRegion;
-        const normalY = estimateHeightNormalY(heightMap, erosionOptions, x, z);
-        const slope = clamp((1 - normalY) * 2.4, 0, 1);
-        const channel = Math.pow(flow[idx] / maxFlow, 0.45);
-        const ravineNoise = 1 - Math.abs(terrainFBM(worldX * 0.035 + iteration * 11, worldZ * 0.035 - iteration * 17, seed + 113, 4) * 2 - 1);
-        const ravine = smoothstep(0.72, 0.94, ravineNoise);
-        const carve = channel * strength * (0.12 + slope * 0.52) + ravine * strength * 0.08;
-        eroded[idx] = clamp(heightMap[idx] - carve, minHeight, maxHeight);
-      }
-    }
-
-    const relaxed = new Float32Array(eroded);
-    for (let z = 1; z < samples - 1; z += 1) {
-      for (let x = 1; x < samples - 1; x += 1) {
-        const idx = indexFor(x, z, samples);
-        const h = eroded[idx];
-        const neighbors = [
-          indexFor(x - 1, z, samples),
-          indexFor(x + 1, z, samples),
-          indexFor(x, z - 1, samples),
-          indexFor(x, z + 1, samples),
-        ];
-
-        for (const neighbor of neighbors) {
-          const drop = h - eroded[neighbor];
-          if (drop <= 1.6) continue;
-          const transfer = Math.min((drop - 1.6) * 0.025 * strength, 0.16 * strength);
-          relaxed[idx] -= transfer;
-          relaxed[neighbor] += transfer * 0.55;
-        }
-      }
-    }
-
-    for (let i = 0; i < length; i += 1) {
-      heightMap[i] = clamp(relaxed[i], minHeight, maxHeight);
-    }
-  }
-}
-
 function updateWaterDepthData(heightMap, waterMesh, options) {
   const depthAttribute = waterMesh?.geometry?.attributes?.waterDepth;
   if (!depthAttribute) return;
-  const renderSamples = waterMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
+  const { samples } = options;
 
-  for (let z = 0; z < renderSamples; z += 1) {
-    for (let x = 0; x < renderSamples; x += 1) {
-      const index = indexFor(x, z, renderSamples);
-      depthAttribute.array[index] = options.waterLevel - evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+  for (let z = 0; z < samples; z += 1) {
+    for (let x = 0; x < samples; x += 1) {
+      const index = indexFor(x, z, samples);
+      depthAttribute.array[index] = options.waterLevel - heightMap[index];
     }
   }
 
@@ -742,19 +486,18 @@ function syncHeightMapRegionToGeometry(heightMap, terrainMesh, waterMesh, option
   if (!sampleBounds) return;
 
   const position = terrainMesh.geometry.attributes.position;
-  const renderSamples = terrainMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
-  const subdivisions = (renderSamples - 1) / (options.samples - 1);
-  const margin = Math.ceil(subdivisions * 2);
-  const minX = Math.max(0, Math.floor(sampleBounds.minX * subdivisions) - margin);
-  const maxX = Math.min(renderSamples - 1, Math.ceil(sampleBounds.maxX * subdivisions) + margin);
-  const minZ = Math.max(0, Math.floor(sampleBounds.minZ * subdivisions) - margin);
-  const maxZ = Math.min(renderSamples - 1, Math.ceil(sampleBounds.maxZ * subdivisions) + margin);
+  const { samples } = options;
+  const margin = 2;
+  const minX = Math.max(0, Math.floor(sampleBounds.minX) - margin);
+  const maxX = Math.min(samples - 1, Math.ceil(sampleBounds.maxX) + margin);
+  const minZ = Math.max(0, Math.floor(sampleBounds.minZ) - margin);
+  const maxZ = Math.min(samples - 1, Math.ceil(sampleBounds.maxZ) + margin);
 
   for (let z = minZ; z <= maxZ; z += 1) {
-    const rowStart = indexFor(minX, z, renderSamples);
+    const rowStart = indexFor(minX, z, samples);
     for (let x = minX; x <= maxX; x += 1) {
-      const index = indexFor(x, z, renderSamples);
-      position.array[index * 3 + 1] = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+      const index = indexFor(x, z, samples);
+      position.array[index * 3 + 1] = heightMap[index];
     }
     markAttributeRange(position, rowStart * 3, (maxX - minX + 1) * 3);
   }
@@ -765,10 +508,10 @@ function syncHeightMapRegionToGeometry(heightMap, terrainMesh, waterMesh, option
     const depthAttribute = waterMesh?.geometry?.attributes?.waterDepth;
     if (depthAttribute) {
       for (let z = minZ; z <= maxZ; z += 1) {
-        const rowStart = indexFor(minX, z, renderSamples);
+        const rowStart = indexFor(minX, z, samples);
         for (let x = minX; x <= maxX; x += 1) {
-          const index = indexFor(x, z, renderSamples);
-          depthAttribute.array[index] = options.waterLevel - evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+          const index = indexFor(x, z, samples);
+          depthAttribute.array[index] = options.waterLevel - heightMap[index];
         }
         markAttributeRange(depthAttribute, rowStart, maxX - minX + 1);
       }
@@ -779,12 +522,12 @@ function syncHeightMapRegionToGeometry(heightMap, terrainMesh, waterMesh, option
 
 function syncHeightMapToGeometry(heightMap, terrainMesh, waterMesh, options) {
   const position = terrainMesh.geometry.attributes.position;
-  const renderSamples = terrainMesh.geometry.userData.renderSamples ?? renderSamplesFor(options.samples, options.renderSubdivisions);
+  const { samples } = options;
 
-  for (let z = 0; z < renderSamples; z += 1) {
-    for (let x = 0; x < renderSamples; x += 1) {
-      const index = indexFor(x, z, renderSamples);
-      position.array[index * 3 + 1] = evaluateTerrainRenderHeight(heightMap, options, x, z, renderSamples);
+  for (let z = 0; z < samples; z += 1) {
+    for (let x = 0; x < samples; x += 1) {
+      const index = indexFor(x, z, samples);
+      position.array[index * 3 + 1] = heightMap[index];
     }
   }
 
@@ -944,126 +687,19 @@ function getBrushCursorColor(mode) {
   return 0x58ff9a;
 }
 
-// --- Hex-tiling GLSL (injected into MeshStandardMaterial) ---
+// --- Terrain texture sampling GLSL (injected into MeshStandardMaterial) ---
 
-const hexTilingGLSL = `
-  const float HEX_FALL_OFF_CONTRAST = 0.6;
-  const float HEX_BLEND_EXP_MIN = 2.0;
-  const float HEX_BLEND_EXP_MAX = 12.0;
-  const float HEX_ROT_STRENGTH = 1.0;
-  const vec3 HEX_LUMA_WEIGHTS = vec3(0.299, 0.587, 0.114);
-
-  struct HexTriangleGrid {
-    float w1;
-    float w2;
-    float w3;
-    ivec2 vertex1;
-    ivec2 vertex2;
-    ivec2 vertex3;
-  };
-
-  vec2 hexHash(vec2 p) {
-    // Sin-free integer hash (was fract(sin(mat2*p) * 43758)). The old form's
-    // transcendentals of large arguments are 2-4x slower on ANGLE/D3D11 and
-    // mobile GL, and hexHash runs inside every hexTileColor (12-48x per
-    // fragment on the terrain hot path). p is integer-valued (from ivec2
-    // vertex ids), so uint hashing is exact. GLSL3 (WebGL2) path; the GLSL1
-    // fallback keeps the old sin hash so WebGL1 contexts still compile.
-#if __VERSION__ >= 300
-    uint h = uint(ivec2(p).x) * 747796405u + uint(ivec2(p).y) * 2891336453u + 374761393u;
-    h = (h ^ (h >> 16u)) * 0x7feb352du;
-    h = (h ^ (h >> 15u)) * 0x846ca68bu;
-    h = h ^ (h >> 16u);
-    return vec2(float(h & 0xFFFFu), float(h >> 16u)) * (1.0 / 65535.0);
-#else
-    vec2 r = mat2(127.1, 269.5, 311.7, 183.3) * p;
-    return fract(sin(r) * 43758.5453);
-#endif
-  }
-
-  vec2 makeCenST(ivec2 vertex) {
-    mat2 invSkewMat = mat2(1.0, 0.0, 0.5, 1.0 / 1.15470054);
-    return invSkewMat * vec2(vertex) / (2.0 * sqrt(3.0));
-  }
-
-  mat2 loadRot2x2(ivec2 idx, float rotStrength) {
-    float angle = float(abs(idx.x * idx.y) + abs(idx.x + idx.y)) + 3.14159265;
-    angle = mod(angle, 6.2831853);
-    if (angle > 3.14159265) angle -= 6.2831853;
-    angle *= rotStrength;
-    float cs = cos(angle);
-    float si = sin(angle);
-    return mat2(cs, si, -si, cs);
-  }
-
-  vec3 gain3(vec3 x, float r) {
-    float k = log(1.0 - r) / log(0.5);
-    vec3 s = 2.0 * step(0.5, x);
-    vec3 m = 2.0 * (1.0 - s);
-    vec3 res = 0.5 * s + 0.25 * m * pow(max(vec3(0.0), s + x * m), vec3(k));
-    return res / (res.x + res.y + res.z);
-  }
-
-  HexTriangleGrid triangleGrid(vec2 st) {
-    st *= 2.0 * sqrt(3.0);
-    mat2 gridToSkewedGrid = mat2(1.0, 0.0, -0.57735027, 1.15470054);
-    vec2 skewedCoord = gridToSkewedGrid * st;
-    ivec2 baseId = ivec2(floor(skewedCoord));
-    vec3 temp = vec3(fract(skewedCoord), 0.0);
-    temp.z = 1.0 - temp.x - temp.y;
-    float s = step(0.0, -temp.z);
-    float s2 = 2.0 * s - 1.0;
-    HexTriangleGrid grid;
-    grid.w1 = -temp.z * s2;
-    grid.w2 = s - temp.y * s2;
-    grid.w3 = s - temp.x * s2;
-    grid.vertex1 = baseId + ivec2(int(s), int(s));
-    grid.vertex2 = baseId + ivec2(int(s), 1 - int(s));
-    grid.vertex3 = baseId + ivec2(1 - int(s), int(s));
-    return grid;
-  }
-
-  vec3 hexTileColor(sampler2D tex, vec2 st, float hexTileRate, float hexContrastR) {
-    st *= hexTileRate;
-    HexTriangleGrid grid = triangleGrid(st);
-    mat2 rot1 = loadRot2x2(grid.vertex1, HEX_ROT_STRENGTH);
-    mat2 rot2 = loadRot2x2(grid.vertex2, HEX_ROT_STRENGTH);
-    mat2 rot3 = loadRot2x2(grid.vertex3, HEX_ROT_STRENGTH);
-    vec2 cen1 = makeCenST(grid.vertex1);
-    vec2 cen2 = makeCenST(grid.vertex2);
-    vec2 cen3 = makeCenST(grid.vertex3);
-    vec2 st1 = rot1 * (st - cen1) + cen1 + hexHash(vec2(grid.vertex1));
-    vec2 st2 = rot2 * (st - cen2) + cen2 + hexHash(vec2(grid.vertex2));
-    vec2 st3 = rot3 * (st - cen3) + cen3 + hexHash(vec2(grid.vertex3));
-    vec3 c1 = texture2D(tex, st1).rgb;
-    vec3 c2 = texture2D(tex, st2).rgb;
-    vec3 c3 = texture2D(tex, st3).rgb;
-    vec3 Dw = vec3(dot(c1, HEX_LUMA_WEIGHTS), dot(c2, HEX_LUMA_WEIGHTS), dot(c3, HEX_LUMA_WEIGHTS));
-    Dw = mix(vec3(1.0), Dw, HEX_FALL_OFF_CONTRAST);
-    vec3 bw = vec3(grid.w1, grid.w2, grid.w3);
-    float hexExponent = mix(HEX_BLEND_EXP_MIN, HEX_BLEND_EXP_MAX, clamp((hexContrastR - 0.5) / 0.45, 0.0, 1.0));
-    if (abs(hexContrastR - 0.5) > 0.001) bw = gain3(bw, hexContrastR);
-    vec3 W = Dw * pow(bw, vec3(hexExponent));
-    W /= W.x + W.y + W.z;
-    return W.x * c1 + W.y * c2 + W.z * c3;
-  }
-
+const terrainTextureSamplingGLSL = `
   // Triplanar sampling: blend 3 world-space projections by normal dominance.
-  // Fixes stretched textures on vertical cliffs (heightfield faces). Each
-  // projection still goes through hex-tiling to avoid seams.
-  vec3 hexTileTriplanar(sampler2D tex, vec3 worldPos, vec3 worldNormal, float uvScale, float hexTileRate, float hexContrastR) {
+  // Fixes stretched textures on vertical cliffs without hash-based sampling.
+  vec3 terrainTriplanar(sampler2D tex, vec3 worldPos, vec3 worldNormal, float uvScale) {
     vec3 nrm = normalize(worldNormal);
     vec3 blend = pow(abs(nrm), vec3(4.0));
     blend /= max(blend.x + blend.y + blend.z, 0.0001);
 
-    // XZ plane (top), XY plane (front), ZY plane (side)
-    vec2 uvXZ = worldPos.xz * uvScale;
-    vec2 uvXY = worldPos.xy * uvScale;
-    vec2 uvZY = worldPos.zy * uvScale;
-
-    vec3 cXZ = hexTileColor(tex, uvXZ, hexTileRate, hexContrastR);
-    vec3 cXY = hexTileColor(tex, uvXY, hexTileRate, hexContrastR);
-    vec3 cZY = hexTileColor(tex, uvZY, hexTileRate, hexContrastR);
+    vec3 cXZ = texture2D(tex, worldPos.xz * uvScale).rgb;
+    vec3 cXY = texture2D(tex, worldPos.xy * uvScale).rgb;
+    vec3 cZY = texture2D(tex, worldPos.zy * uvScale).rgb;
 
     return cXZ * blend.y + cXY * blend.z + cZY * blend.x;
   }
@@ -1075,8 +711,6 @@ function createTerrainMaterial(textureLoader, options) {
   const {
     textures,
     textureDensity,
-    hexTileRate,
-    hexTileContrast,
     waterLevel,
     waterEnabled = 1,
     textureHeights,
@@ -1088,12 +722,6 @@ function createTerrainMaterial(textureLoader, options) {
     terrainRoughnessIntensity = 1.0,
     triplanarEnabled = true,
     wetSandEnabled = true,
-    snowSparklesEnabled = true,
-    noisePerturbEnabled = true,
-    cavityAOEnabled = true,
-    moisture = 0.5,
-    biomeVariation = DEFAULT_BIOME_VARIATION,
-    proceduralNormalStrength = DEFAULT_PROCEDURAL_NORMAL_STRENGTH,
     sunDirection = new THREE.Vector3(...DEFAULT_SUN_DIRECTION),
   } = options;
 
@@ -1134,8 +762,6 @@ function createTerrainMaterial(textureLoader, options) {
     shader.uniforms.uRock = { value: rockTex };
     shader.uniforms.uSnow = { value: snowTex };
     shader.uniforms.uTextureScale = { value: textureDensity };
-    shader.uniforms.uHexTileRate = { value: hexTileRate };
-    shader.uniforms.uHexContrastR = { value: hexTileContrast };
     shader.uniforms.uSandMax = { value: textureHeights.sandMax };
     shader.uniforms.uGrassStart = { value: textureHeights.grassStart };
     shader.uniforms.uGrassEnd = { value: textureHeights.grassEnd };
@@ -1149,12 +775,6 @@ function createTerrainMaterial(textureLoader, options) {
     shader.uniforms.uTerrainRoughnessIntensity = { value: terrainRoughnessIntensity };
     shader.uniforms.uTriplanarEnabled = { value: triplanarEnabled ? 1.0 : 0.0 };
     shader.uniforms.uWetSandEnabled = { value: wetSandEnabled ? 1.0 : 0.0 };
-    shader.uniforms.uSnowSparklesEnabled = { value: snowSparklesEnabled ? 1.0 : 0.0 };
-    shader.uniforms.uNoisePerturbEnabled = { value: noisePerturbEnabled ? 1.0 : 0.0 };
-    shader.uniforms.uCavityAOEnabled = { value: cavityAOEnabled ? 1.0 : 0.0 };
-    shader.uniforms.uMoisture = { value: moisture };
-    shader.uniforms.uBiomeVariation = { value: biomeVariation };
-    shader.uniforms.uProceduralNormalStrength = { value: proceduralNormalStrength };
     shader.uniforms.uSunDirection = { value: sunDirection };
 
     // Add PBR texture uniforms if available
@@ -1167,7 +787,7 @@ function createTerrainMaterial(textureLoader, options) {
       shader.uniforms.uNormalStrength = { value: normalStrength };
     }
 
-    // Inject hex-tiling functions and varyings at top of shaders
+    // Inject texture sampling helpers and varyings at top of shaders
     const varyings = `
       varying float vTerrainHeight;
       varying vec3 vTerrainWorldNormal;
@@ -1181,8 +801,6 @@ function createTerrainMaterial(textureLoader, options) {
       uniform sampler2D uRock;
       uniform sampler2D uSnow;
       uniform float uTextureScale;
-      uniform float uHexTileRate;
-      uniform float uHexContrastR;
       uniform float uSandMax;
       uniform float uGrassStart;
       uniform float uGrassEnd;
@@ -1205,107 +823,24 @@ function createTerrainMaterial(textureLoader, options) {
       uniform float uNormalStrength;
       uniform float uTriplanarEnabled;
       uniform float uWetSandEnabled;
-      uniform float uSnowSparklesEnabled;
-      uniform float uNoisePerturbEnabled;
-      uniform float uCavityAOEnabled;
-      uniform float uMoisture;
-      uniform float uBiomeVariation;
-      uniform float uProceduralNormalStrength;
       uniform vec3 uSunDirection;
     `;
 
     const terrainBlendGLSL = `
-      // Cheap hash-based value noise for perturbing layer transitions.
-      float terrainHash(vec2 p) {
-        // Sin-free integer hash (was fract(sin(dot(p, vec2(127.1,311.7))) * 43758)).
-        // p is integer-valued (callers pass floor(...)), so uint hashing is exact.
-        // terrainValueNoise calls this many times per fragment — perturbedHeight,
-        // cavityAO (3x), snowSparkles, moisture, and the procedural bump (9x via
-        // 3 finite-difference samples) — so removing the sin is a large per-fragment
-        // saving on ANGLE/D3D11 and mobile GL. GLSL3 (WebGL2) path; GLSL1 fallback
-        // keeps the old sin hash so WebGL1 contexts still compile.
-#if __VERSION__ >= 300
-        uint h = uint(ivec2(p).x) * 747796405u + uint(ivec2(p).y) * 2891336453u + 374761393u;
-        h = (h ^ (h >> 16u)) * 0x7feb352du;
-        h = (h ^ (h >> 15u)) * 0x846ca68bu;
-        h = h ^ (h >> 16u);
-        return float(h) * (1.0 / 4294967296.0);
-#else
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-#endif
-      }
-      float terrainValueNoise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        f = f * f * (3.0 - 2.0 * f);
-        float a = terrainHash(i);
-        float b = terrainHash(i + vec2(1.0, 0.0));
-        float c = terrainHash(i + vec2(0.0, 1.0));
-        float d = terrainHash(i + vec2(1.0, 1.0));
-        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-      }
-
-      // Perturb height to break up clean horizontal banding at layer transitions.
-      float perturbedHeight(float height, vec3 worldPos) {
-        if (uNoisePerturbEnabled < 0.5) return height;
-        float n = terrainValueNoise(worldPos.xz * 0.18) * 2.5 - 1.25;
-        return height + n;
-      }
-
-      // Cavity AO from procedural height gradient: sample noise at offset to
-      // approximate local concavity. Darkens valleys/gullies.
-      float terrainCavityAO(vec3 worldPos) {
-        if (uCavityAOEnabled < 0.5) return 1.0;
-        float here = terrainValueNoise(worldPos.xz * 0.08);
-        float dx = terrainValueNoise((worldPos.xz + vec2(1.5, 0.0)) * 0.08);
-        float dz = terrainValueNoise((worldPos.xz + vec2(0.0, 1.5)) * 0.08);
-        float concavity = max(0.0, (here - dx) + (here - dz)) * 2.0;
-        return 1.0 - clamp(concavity, 0.0, 0.6);
-      }
-
-      float terrainLocalMoisture(vec3 worldPos) {
-        float broad = terrainValueNoise(worldPos.xz * 0.015 + vec2(17.0, -31.0)) * 2.0 - 1.0;
-        float patchNoise = terrainValueNoise(worldPos.xz * 0.055 + vec2(-11.0, 7.0)) * 2.0 - 1.0;
-        return clamp(uMoisture + (broad * 0.75 + patchNoise * 0.25) * uBiomeVariation, 0.0, 1.0);
-      }
-
-      // Moisture patches shift grass dry->lush and lower the snow line locally.
-      vec3 moistureTint(vec3 albedo, float height, vec4 weights, float localMoisture) {
-        float dry = smoothstep(0.55, 0.0, localMoisture);
-        float wet = smoothstep(0.45, 1.0, localMoisture);
-        vec3 dryGrass = vec3(0.70, 0.58, 0.34);
-        vec3 lushGrass = vec3(0.20, 0.48, 0.16);
-        vec3 dampSand = vec3(0.74, 0.68, 0.55);
-        albedo = mix(albedo, albedo * dryGrass, weights.y * dry * 0.5);
-        albedo = mix(albedo, albedo * lushGrass, weights.y * wet * 0.55);
-        albedo = mix(albedo, albedo * dampSand, weights.x * wet * 0.25);
-        return albedo;
-      }
-
-      // Snow sparkles: high-freq noise thresholded against sun-facing normal.
-      vec3 snowSparkles(vec3 albedo, vec3 worldNormal, vec3 worldPos) {
-        if (uSnowSparklesEnabled < 0.5) return albedo;
-        vec3 sunDir = normalize(uSunDirection);
-        float sunFacing = max(dot(normalize(worldNormal), sunDir), 0.0);
-        float sparkleN = terrainValueNoise(worldPos.xz * 90.0);
-        float sparkle = step(0.93, sparkleN) * smoothstep(0.3, 0.8, sunFacing);
-        return albedo + vec3(0.5) * sparkle;
-      }
-
+      // Terrain layer weights: blend the four PBR texture layers (sand/grass/rock/
+      // snow) by height bands and slope. No procedural noise — band edges are
+      // clean smoothsteps over height/slope only, so this is constant-time per
+      // fragment with no dependent reads or transcendental hashing.
       vec4 terrainLayerWeights(float terrainHeight, vec3 terrainWorldNormal, vec3 worldPos) {
         vec3 geomNormal = normalize(terrainWorldNormal);
         float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
         float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, terrainHeight)) * uWaterEnabled;
-        float localMoisture = terrainLocalMoisture(worldPos);
-
-        // Moisture lowers the effective snow line so wetter climates snow earlier.
-        float snowStartEff = uSnowStart - (localMoisture - 0.5) * 4.0;
 
         float sandWeight = 1.0 - smoothstep(uSandMax - uBlendWidth, uSandMax, terrainHeight);
         float grassWeight = smoothstep(uGrassStart - uBlendWidth, uGrassStart + uBlendWidth, terrainHeight)
           * (1.0 - smoothstep(uGrassEnd - uBlendWidth, uGrassEnd + uBlendWidth, terrainHeight));
         float rockWeight = smoothstep(uRockStart - uBlendWidth, uRockStart + uBlendWidth, terrainHeight) + slope * 0.35;
-        float snowWeight = smoothstep(snowStartEff - uBlendWidth, snowStartEff + uBlendWidth, terrainHeight) * (1.0 - slope * 0.25);
+        float snowWeight = smoothstep(uSnowStart - uBlendWidth, uSnowStart + uBlendWidth, terrainHeight) * (1.0 - slope * 0.25);
 
         sandWeight += wetEdge * 0.6;
         grassWeight *= 1.0 + slope * 0.75;
@@ -1341,45 +876,6 @@ function createTerrainMaterial(textureLoader, options) {
         return weights.x * sandScale + weights.y * grassScale + weights.z * rockScale + weights.w * snowScale;
       }
 
-      float terrainProceduralBump(vec3 worldPos, vec4 weights) {
-        vec2 p = worldPos.xz;
-        float broadBands = (
-          sin(dot(p, vec2(0.74, 0.31)) * 1.7)
-          + sin(dot(p, vec2(-0.42, 0.91)) * 1.25) * 0.7
-        ) * 0.35;
-        float rockStrata = sin(worldPos.y * 2.6 + p.x * 0.34 + p.y * 0.11) * 0.65
-          + sin(worldPos.y * 5.4 - p.x * 0.18 + p.y * 0.26) * 0.25;
-        float rockRidge = (terrainValueNoise(p * 0.75 + vec2(19.0, 4.0)) * 2.0 - 1.0) * 0.25;
-        float grassRoll = (terrainValueNoise(p * 0.32 + vec2(5.0, 13.0)) - 0.5) * 0.45;
-        float sandRipple = sin(dot(p, vec2(0.86, 0.22)) * 1.25) * 0.16;
-        float snowDrift = (terrainValueNoise(p * 0.18 + vec2(-9.0, 21.0)) - 0.5) * 0.18;
-        float visibleLayer = weights.x * 0.45 + weights.y * 0.38 + weights.z * 0.75 + weights.w * 0.25;
-        return broadBands * visibleLayer
-          + (rockStrata + rockRidge) * weights.z * 1.5
-          + grassRoll * weights.y * 0.45
-          + sandRipple * weights.x * 0.35
-          + snowDrift * weights.w * 0.25;
-      }
-
-      vec3 terrainProceduralWorldNormal(vec4 weights) {
-        vec3 nW = normalize(vTerrainWorldNormal);
-        if (uProceduralNormalStrength <= 0.001) return nW;
-
-        vec3 tangentSeed = abs(nW.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-        vec3 tW = normalize(cross(tangentSeed, nW));
-        vec3 bW = normalize(cross(nW, tW));
-
-        float stepSize = 0.45;
-        float h = terrainProceduralBump(vTerrainWorldPos, weights);
-        float hT = terrainProceduralBump(vTerrainWorldPos + tW * stepSize, weights);
-        float hB = terrainProceduralBump(vTerrainWorldPos + bW * stepSize, weights);
-        float slope = clamp((1.0 - nW.y) * 2.4, 0.0, 1.0);
-        float layerScale = weights.x * 0.45 + weights.y * 0.55 + weights.z * (1.2 + slope * 0.9) + weights.w * 0.25;
-        float strength = uProceduralNormalStrength * layerScale * 5.5;
-
-        return normalize(nW - tW * (hT - h) * strength - bW * (hB - h) * strength);
-      }
-
       vec3 terrainSampleNormal(vec4 weights) {
         vec3 n = vec3(0.0);
         n += (texture2D(uSandNormal, vTerrainUv * uTextureScale * 1.15).xyz * 2.0 - 1.0) * weights.x;
@@ -1404,7 +900,7 @@ function createTerrainMaterial(textureLoader, options) {
     `;
 
     shader.vertexShader = uniformDeclarations + varyings + shader.vertexShader;
-    shader.fragmentShader = uniformDeclarations + varyings + hexTilingGLSL + terrainBlendGLSL + shader.fragmentShader;
+    shader.fragmentShader = uniformDeclarations + varyings + terrainTextureSamplingGLSL + terrainBlendGLSL + shader.fragmentShader;
 
     // Pass height and world normal from vertex to fragment
     shader.vertexShader = shader.vertexShader.replace(
@@ -1417,19 +913,15 @@ function createTerrainMaterial(textureLoader, options) {
     );
 
 
-    // Replace color_fragment with hex-tiled multi-layer blending
+    // Replace color_fragment with multi-layer terrain texture blending
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <color_fragment>',
-      `// --- Hex-tiled multi-layer terrain blending ---
+      `// --- Multi-layer terrain texture blending ---
       vec2 terrainTiledUv = vTerrainUv * uTextureScale;
       vec3 geomNormal = normalize(vTerrainWorldNormal);
       float slope = clamp((1.0 - geomNormal.y) * 2.4, 0.0, 1.0);
 
-      // #4: Noise-perturbed height breaks up clean horizontal banding.
-      float effHeight = perturbedHeight(vTerrainHeight, vTerrainWorldPos);
-
-      vec4 terrainWeights = terrainLayerWeights(effHeight, vTerrainWorldNormal, vTerrainWorldPos);
-      float terrainMoisture = terrainLocalMoisture(vTerrainWorldPos);
+      vec4 terrainWeights = terrainLayerWeights(vTerrainHeight, vTerrainWorldNormal, vTerrainWorldPos);
 
       // #1: Triplanar mapping on steep slopes, regular sampling on flat ground.
       float triplanarBlend = smoothstep(0.35, 0.7, slope) * uTriplanarEnabled;
@@ -1439,23 +931,23 @@ function createTerrainMaterial(textureLoader, options) {
       vec3 snowColor;
       if (triplanarBlend > 0.01) {
         float tpScale = uTextureScale / 256.0;
-        vec3 tpSand = hexTileTriplanar(uSand, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 1.15, uHexTileRate, uHexContrastR);
-        vec3 tpGrass = hexTileTriplanar(uGrass, vTerrainWorldPos, vTerrainWorldNormal, tpScale, uHexTileRate, uHexContrastR);
-        vec3 tpRock = hexTileTriplanar(uRock, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.82, uHexTileRate, uHexContrastR);
-        vec3 tpSnow = hexTileTriplanar(uSnow, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.66, uHexTileRate, uHexContrastR);
-        vec3 flatSand = hexTileColor(uSand, terrainTiledUv * 1.15, uHexTileRate, uHexContrastR);
-        vec3 flatGrass = hexTileColor(uGrass, terrainTiledUv, uHexTileRate, uHexContrastR);
-        vec3 flatRock = hexTileColor(uRock, terrainTiledUv * 0.82, uHexTileRate, uHexContrastR);
-        vec3 flatSnow = hexTileColor(uSnow, terrainTiledUv * 0.66, uHexTileRate, uHexContrastR);
+        vec3 tpSand = terrainTriplanar(uSand, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 1.15);
+        vec3 tpGrass = terrainTriplanar(uGrass, vTerrainWorldPos, vTerrainWorldNormal, tpScale);
+        vec3 tpRock = terrainTriplanar(uRock, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.82);
+        vec3 tpSnow = terrainTriplanar(uSnow, vTerrainWorldPos, vTerrainWorldNormal, tpScale * 0.66);
+        vec3 flatSand = texture2D(uSand, terrainTiledUv * 1.15).rgb;
+        vec3 flatGrass = texture2D(uGrass, terrainTiledUv).rgb;
+        vec3 flatRock = texture2D(uRock, terrainTiledUv * 0.82).rgb;
+        vec3 flatSnow = texture2D(uSnow, terrainTiledUv * 0.66).rgb;
         sandColor = mix(flatSand, tpSand, triplanarBlend);
         grassColor = mix(flatGrass, tpGrass, triplanarBlend);
         rockColor = mix(flatRock, tpRock, triplanarBlend);
         snowColor = mix(flatSnow, tpSnow, triplanarBlend);
       } else {
-        sandColor = hexTileColor(uSand, terrainTiledUv * 1.15, uHexTileRate, uHexContrastR);
-        grassColor = hexTileColor(uGrass, terrainTiledUv, uHexTileRate, uHexContrastR);
-        rockColor = hexTileColor(uRock, terrainTiledUv * 0.82, uHexTileRate, uHexContrastR);
-        snowColor = hexTileColor(uSnow, terrainTiledUv * 0.66, uHexTileRate, uHexContrastR);
+        sandColor = texture2D(uSand, terrainTiledUv * 1.15).rgb;
+        grassColor = texture2D(uGrass, terrainTiledUv).rgb;
+        rockColor = texture2D(uRock, terrainTiledUv * 0.82).rgb;
+        snowColor = texture2D(uSnow, terrainTiledUv * 0.66).rgb;
       }
 
       vec3 terrainAlbedo = sandColor * terrainWeights.x + grassColor * terrainWeights.y + rockColor * terrainWeights.z + snowColor * terrainWeights.w;
@@ -1464,16 +956,6 @@ function createTerrainMaterial(textureLoader, options) {
       float wetEdge = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
       float wetness = wetEdge * uWetSandEnabled;
       terrainAlbedo = mix(terrainAlbedo, terrainAlbedo * 0.55, wetness * 0.7);
-
-      // #7: Moisture tint (lush grass in wet climates, brown in dry).
-      terrainAlbedo = moistureTint(terrainAlbedo, vTerrainHeight, terrainWeights, terrainMoisture);
-
-      // #3: Snow sparkles in direct sun.
-      terrainAlbedo = snowSparkles(terrainAlbedo, vTerrainWorldNormal, vTerrainWorldPos);
-
-      // #6: Cavity AO darkens valleys/gullies.
-      float cavityAO = terrainCavityAO(vTerrainWorldPos);
-      terrainAlbedo *= cavityAO;
 
       // Set diffuse color for Three.js PBR pipeline
       diffuseColor = vec4(terrainAlbedo, diffuseColor.a);
@@ -1491,12 +973,10 @@ function createTerrainMaterial(textureLoader, options) {
         vec4 terrainMRAO = terrainSampleMRAO(terrainWeights);
         {
           roughnessFactor = clamp(terrainMRAO.g * uTerrainRoughnessIntensity, 0.04, 1.0);
-          // #2: Wet sand is shinier (lower roughness) near shoreline.
+          // Wet sand is shinier (lower roughness) near shoreline.
           float wetEdgeR = (1.0 - smoothstep(uWaterLevel - 0.25, uWaterLevel + 1.25, vTerrainHeight)) * uWaterEnabled;
           float wetnessR = wetEdgeR * uWetSandEnabled;
           roughnessFactor = mix(roughnessFactor, clamp(0.08 * uTerrainRoughnessIntensity, 0.04, 1.0), wetnessR * 0.7);
-          // #6: Cavity AO also raises roughness in crevices.
-          roughnessFactor = mix(roughnessFactor, 1.0, (1.0 - cavityAO) * 0.3);
         }`
       );
 
@@ -1518,12 +998,6 @@ function createTerrainMaterial(textureLoader, options) {
           vec3 terrainTangentNormal = terrainSampleNormal(terrainWeights);
           mat3 terrainTBN = terrainTangentFrame(vTerrainWorldNormal);
           normal = normalize(terrainTBN * terrainTangentNormal);
-
-          if (uProceduralNormalStrength > 0.001) {
-            vec3 proceduralWorldNormal = terrainProceduralWorldNormal(terrainWeights);
-            vec3 proceduralViewNormal = normalize((viewMatrix * vec4(proceduralWorldNormal, 0.0)).xyz);
-            normal = normalize(mix(normal, proceduralViewNormal, clamp(uProceduralNormalStrength * 0.9, 0.0, 1.0)));
-          }
         }`
       );
 
@@ -1832,7 +1306,7 @@ const waterFragmentShader = `
     return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
   }
 
-  // Simplified height-based terrain blend for refraction seabed (no hex-tiling).
+  // Simplified height-based terrain blend for refraction seabed.
   vec3 sampleSeabed(vec2 worldXZ, float terrainHeight) {
     vec2 sUV = worldXZ * uSeabedUVScale;
     float sw = 1.0 - smoothstep(uSandMax - 4.0, uSandMax, terrainHeight);
@@ -2188,18 +1662,7 @@ export class TerrainRegion {
     this.waterShallowAlpha = options.waterShallowAlpha ?? 0.5;
     this.waterDeepAlpha = options.waterDeepAlpha ?? 0.94;
     this.waterMaxAlpha = options.waterMaxAlpha ?? 0.97;
-    const requestedTerrainQuality = options.terrainQuality ?? DEFAULT_TERRAIN_QUALITY;
-    this.renderSubdivisions = normalizeRenderSubdivisions(options.renderSubdivisions ?? renderSubdivisionsForQuality(requestedTerrainQuality));
-    this.terrainQuality = terrainQualityForSubdivisions(this.renderSubdivisions);
-    this.terrainDetailStrength = Math.max(0, options.terrainDetailStrength ?? DEFAULT_TERRAIN_DETAIL_STRENGTH);
-    this.terrainCliffStrength = Math.max(0, options.terrainCliffStrength ?? DEFAULT_TERRAIN_CLIFF_STRENGTH);
-    this.terrainMicroDetailStrength = Math.max(0, options.terrainMicroDetailStrength ?? DEFAULT_TERRAIN_MICRO_DETAIL_STRENGTH);
-    this.biomeVariation = clamp(options.biomeVariation ?? DEFAULT_BIOME_VARIATION, 0, 1);
-    this.shorelineStrength = clamp(options.shorelineStrength ?? DEFAULT_SHORELINE_STRENGTH, 0, 1);
-    this.proceduralNormalStrength = Math.max(0, options.proceduralNormalStrength ?? DEFAULT_PROCEDURAL_NORMAL_STRENGTH);
     this.textureDensity = options.textureDensity ?? DEFAULT_TEXTURE_DENSITY;
-    this.hexTileRate = options.hexTileRate ?? DEFAULT_HEX_TILE_RATE;
-    this.hexTileContrast = options.hexTileContrast ?? DEFAULT_HEX_TILE_CONTRAST;
     this.textureHeights = { ...DEFAULT_TEXTURE_HEIGHTS, ...options.textureHeights };
     this.textureBlendWidth = options.textureBlendWidth ?? DEFAULT_TEXTURE_BLEND_WIDTH;
     this.textures = requireTextures(options.textures);
@@ -2218,10 +1681,6 @@ export class TerrainRegion {
     this.waterDarkness = options.waterDarkness ?? 0.5;
     this.triplanarEnabled = options.triplanarEnabled ?? true;
     this.wetSandEnabled = options.wetSandEnabled ?? true;
-    this.snowSparklesEnabled = options.snowSparklesEnabled ?? true;
-    this.noisePerturbEnabled = options.noisePerturbEnabled ?? true;
-    this.cavityAOEnabled = options.cavityAOEnabled ?? true;
-    this.moisture = options.moisture ?? 0.5;
 
     this.heightMap = options.heightMap ?? new Float32Array(this.samples * this.samples);
     if (this.heightMap.length !== this.samples * this.samples) {
@@ -2277,17 +1736,10 @@ export class TerrainRegion {
     return {
       regionSize: this.regionSize,
       samples: this.samples,
-      renderSubdivisions: this.renderSubdivisions,
-      terrainDetailStrength: this.terrainDetailStrength,
-      terrainCliffStrength: this.terrainCliffStrength,
-      terrainMicroDetailStrength: this.terrainMicroDetailStrength,
-      biomeVariation: this.biomeVariation,
-      shorelineStrength: this.shorelineStrength,
       waterLevel: this.waterLevel,
       waterEnabled: this.waterEnabled,
       textureHeights: this.textureHeights,
       textureBlendWidth: this.textureBlendWidth,
-      moisture: this.moisture,
       seed: this.seed,
     };
   }
@@ -2296,17 +1748,10 @@ export class TerrainRegion {
     return {
       regionSize: this.regionSize,
       samples: this.samples,
-      renderSubdivisions: 1,
-      terrainDetailStrength: 0,
-      terrainCliffStrength: 0,
-      terrainMicroDetailStrength: 0,
-      biomeVariation: 0,
-      shorelineStrength: 0,
       waterLevel: this.waterLevel,
       waterEnabled: this.waterEnabled,
       textureHeights: this.textureHeights,
       textureBlendWidth: this.textureBlendWidth,
-      moisture: this.moisture,
       seed: this.seed,
     };
   }
@@ -2316,8 +1761,6 @@ export class TerrainRegion {
     const material = createTerrainMaterial(this.textureLoader, {
       textures: this.textures,
       textureDensity: this.textureDensity,
-      hexTileRate: this.hexTileRate,
-      hexTileContrast: this.hexTileContrast,
       waterLevel: this.waterLevel,
       waterEnabled: this.waterEnabled,
       textureHeights: this.textureHeights,
@@ -2329,12 +1772,6 @@ export class TerrainRegion {
       terrainRoughnessIntensity: this.terrainRoughnessIntensity,
       triplanarEnabled: this.triplanarEnabled,
       wetSandEnabled: this.wetSandEnabled,
-      snowSparklesEnabled: this.snowSparklesEnabled,
-      noisePerturbEnabled: this.noisePerturbEnabled,
-      cavityAOEnabled: this.cavityAOEnabled,
-      moisture: this.moisture,
-      biomeVariation: this.biomeVariation,
-      proceduralNormalStrength: this.proceduralNormalStrength,
       sunDirection: this.sunDirection,
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -2409,35 +1846,6 @@ export class TerrainRegion {
       minHeight: this.minHeight,
       maxHeight: this.maxHeight,
       seed: this.seed,
-    });
-
-    if ((options.erosionStrength ?? 0) > 0) {
-      applyErosionToHeightMap(this.heightMap, {
-        samples: this.samples,
-        regionSize: this.regionSize,
-        minHeight: this.minHeight,
-        maxHeight: this.maxHeight,
-        seed: this.seed,
-        iterations: options.erosionIterations ?? 1,
-        strength: options.erosionStrength,
-      });
-    }
-
-    this.sync();
-    this.emitHeightmapChange();
-    return this;
-  }
-
-  erode(options = {}) {
-    options ??= {};
-    applyErosionToHeightMap(this.heightMap, {
-      samples: this.samples,
-      regionSize: this.regionSize,
-      minHeight: this.minHeight,
-      maxHeight: this.maxHeight,
-      seed: this.seed,
-      iterations: options.iterations ?? 1,
-      strength: options.strength ?? 0.5,
     });
 
     this.sync();
@@ -2567,87 +1975,6 @@ export class TerrainRegion {
     }
 
     this.sync();
-    return this;
-  }
-
-  setRenderSubdivisions(subdivisions) {
-    const nextSubdivisions = normalizeRenderSubdivisions(subdivisions);
-    this.terrainQuality = terrainQualityForSubdivisions(nextSubdivisions);
-    if (nextSubdivisions === this.renderSubdivisions) return this;
-
-    this.renderSubdivisions = nextSubdivisions;
-    this.rebuildTerrainGeometry();
-    return this;
-  }
-
-  setTerrainQuality(quality) {
-    this.terrainQuality = quality;
-    this.setRenderSubdivisions(renderSubdivisionsForQuality(quality));
-    return this;
-  }
-
-  setTerrainDetailStrength(strength) {
-    this.terrainDetailStrength = Math.max(0, strength);
-    this.sync();
-    return this;
-  }
-
-  setTerrainCliffStrength(strength) {
-    this.terrainCliffStrength = Math.max(0, strength);
-    this.sync();
-    return this;
-  }
-
-  setTerrainMicroDetailStrength(strength) {
-    this.terrainMicroDetailStrength = Math.max(0, strength);
-    this.sync();
-    return this;
-  }
-
-  setBiomeVariation(variation) {
-    this.biomeVariation = clamp(variation, 0, 1);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uBiomeVariation) {
-      shader.uniforms.uBiomeVariation.value = this.biomeVariation;
-    }
-    this.sync();
-    return this;
-  }
-
-  setShorelineStrength(strength) {
-    this.shorelineStrength = clamp(strength, 0, 1);
-    this.sync();
-    return this;
-  }
-
-  setProceduralNormalStrength(strength) {
-    this.proceduralNormalStrength = Math.max(0, strength);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uProceduralNormalStrength) {
-      shader.uniforms.uProceduralNormalStrength.value = this.proceduralNormalStrength;
-    }
-    return this;
-  }
-
-  setHexTileRate(rate) {
-    this.hexTileRate = rate;
-
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uHexTileRate) {
-      shader.uniforms.uHexTileRate.value = rate;
-    }
-
-    return this;
-  }
-
-  setHexTileContrast(contrast) {
-    this.hexTileContrast = clamp(contrast, 0.5, 0.99);
-
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uHexContrastR) {
-      shader.uniforms.uHexContrastR.value = this.hexTileContrast;
-    }
-
     return this;
   }
 
@@ -2974,43 +2301,6 @@ export class TerrainRegion {
     if (shader?.uniforms?.uWetSandEnabled) {
       shader.uniforms.uWetSandEnabled.value = this.wetSandEnabled ? 1.0 : 0.0;
     }
-    return this;
-  }
-
-  setSnowSparklesEnabled(enabled) {
-    this.snowSparklesEnabled = Boolean(enabled);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uSnowSparklesEnabled) {
-      shader.uniforms.uSnowSparklesEnabled.value = this.snowSparklesEnabled ? 1.0 : 0.0;
-    }
-    return this;
-  }
-
-  setNoisePerturbEnabled(enabled) {
-    this.noisePerturbEnabled = Boolean(enabled);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uNoisePerturbEnabled) {
-      shader.uniforms.uNoisePerturbEnabled.value = this.noisePerturbEnabled ? 1.0 : 0.0;
-    }
-    return this;
-  }
-
-  setCavityAOEnabled(enabled) {
-    this.cavityAOEnabled = Boolean(enabled);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uCavityAOEnabled) {
-      shader.uniforms.uCavityAOEnabled.value = this.cavityAOEnabled ? 1.0 : 0.0;
-    }
-    return this;
-  }
-
-  setMoisture(moisture) {
-    this.moisture = clamp(moisture, 0, 1);
-    const shader = this.terrainMesh.material.userData?.shader;
-    if (shader?.uniforms?.uMoisture) {
-      shader.uniforms.uMoisture.value = this.moisture;
-    }
-    this.sync();
     return this;
   }
 

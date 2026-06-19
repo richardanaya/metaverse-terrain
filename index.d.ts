@@ -9,18 +9,7 @@ export const DEFAULT_MIN_HEIGHT: number;
 export const DEFAULT_MAX_HEIGHT: number;
 export const DEFAULT_WATER_LEVEL: number;
 export const DEFAULT_TEXTURE_DENSITY: number;
-export const DEFAULT_HEX_TILE_RATE: number;
-export const DEFAULT_HEX_TILE_CONTRAST: number;
 export const DEFAULT_SUN_DIRECTION: [number, number, number];
-export const DEFAULT_RENDER_SUBDIVISIONS: number;
-export const MAX_RENDER_SUBDIVISIONS: number;
-export const DEFAULT_TERRAIN_DETAIL_STRENGTH: number;
-export const DEFAULT_TERRAIN_CLIFF_STRENGTH: number;
-export const DEFAULT_TERRAIN_MICRO_DETAIL_STRENGTH: number;
-export const DEFAULT_BIOME_VARIATION: number;
-export const DEFAULT_SHORELINE_STRENGTH: number;
-export const DEFAULT_PROCEDURAL_NORMAL_STRENGTH: number;
-export const DEFAULT_TERRAIN_QUALITY: TerrainQuality;
 export const TERRAIN_TEXTURE_LAYERS: readonly ['sand', 'grass', 'rock', 'snow', 'water'];
 export const PBR_CHANNELS: readonly ['metal', 'roughness', 'normal', 'ao'];
 export const DEFAULT_TEXTURE_HEIGHTS: TextureHeights;
@@ -30,7 +19,6 @@ export type BrushMode = 'raise' | 'lower' | 'flatten';
 export type TerrainTextureLayer = (typeof TERRAIN_TEXTURE_LAYERS)[number];
 export type PBRChannel = (typeof PBR_CHANNELS)[number];
 export type PBRLayer = TerrainTextureLayer;
-export type TerrainQuality = 'low' | 'medium' | 'high' | 'ultra';
 
 export interface TerrainTextures {
   sand: string | THREE.Texture;
@@ -102,25 +90,7 @@ export interface TerrainRegionOptions {
   waterShallowAlpha?: number;
   waterDeepAlpha?: number;
   waterMaxAlpha?: number;
-  /** Render-only mesh subdivisions between editable height samples. Default 1, max 4. Does not change heightMap. */
-  renderSubdivisions?: number;
-  /** Quality preset for render-only mesh subdivisions. Ignored when renderSubdivisions is provided. */
-  terrainQuality?: TerrainQuality;
-  /** Render-only procedural displacement strength. Default 0. Does not change heightMap. */
-  terrainDetailStrength?: number;
-  /** Render-only cliff/fracture displacement strength. Default 0. Does not change heightMap. */
-  terrainCliffStrength?: number;
-  /** Multiplier for per-layer render-only micro displacement. Default 1. */
-  terrainMicroDetailStrength?: number;
-  /** Procedural biome/moisture mask variation. Default 0. */
-  biomeVariation?: number;
-  /** Render-only shoreline shelf shaping strength. Default 0. Does not change heightMap. */
-  shorelineStrength?: number;
-  /** Shader-side procedural terrain normal perturbation strength. Default 0. */
-  proceduralNormalStrength?: number;
   textureDensity?: number;
-  hexTileRate?: number;
-  hexTileContrast?: number;
   seed?: number;
   heightMap?: Float32Array;
   textures: TerrainTextures;
@@ -155,14 +125,6 @@ export interface TerrainRegionOptions {
   triplanarEnabled?: boolean;
   /** Enable wet sand darkening and shininess near shoreline. Default true. */
   wetSandEnabled?: boolean;
-  /** Enable sun-coupled snow sparkles. Default true. */
-  snowSparklesEnabled?: boolean;
-  /** Enable noise-perturbed layer transitions. Default true. */
-  noisePerturbEnabled?: boolean;
-  /** Enable geometry cavity AO from heightfield gradient. Default true. */
-  cavityAOEnabled?: boolean;
-  /** Moisture: 0 = dry, 0.5 = normal, 1 = wet. Tints grass, shifts snow line. */
-  moisture?: number;
 }
 
 export interface PaintOptions {
@@ -179,15 +141,7 @@ export interface BrushCursorOptions {
   radius?: number;
 }
 
-export interface TerrainErosionOptions {
-  iterations?: number;
-  strength?: number;
-}
-
-export interface TerrainRandomizeOptions {
-  erosionIterations?: number;
-  erosionStrength?: number;
-}
+export interface TerrainRandomizeOptions {}
 
 export interface StrokeEndOptions {
   /** Emit onHeightmapChange after the full stroke sync. Default true. */
@@ -210,17 +164,7 @@ export class TerrainRegion {
   waterShallowAlpha: number;
   waterDeepAlpha: number;
   waterMaxAlpha: number;
-  terrainQuality: TerrainQuality;
-  renderSubdivisions: number;
-  terrainDetailStrength: number;
-  terrainCliffStrength: number;
-  terrainMicroDetailStrength: number;
-  biomeVariation: number;
-  shorelineStrength: number;
-  proceduralNormalStrength: number;
   textureDensity: number;
-  hexTileRate: number;
-  hexTileContrast: number;
   textureHeights: TextureHeights;
   textureBlendWidth: number;
   textures: TerrainTextures;
@@ -247,10 +191,6 @@ export class TerrainRegion {
   waterDarkness: number;
   triplanarEnabled: boolean;
   wetSandEnabled: boolean;
-  snowSparklesEnabled: boolean;
-  noisePerturbEnabled: boolean;
-  cavityAOEnabled: boolean;
-  moisture: number;
 
   constructor(options: TerrainRegionOptions);
 
@@ -266,7 +206,6 @@ export class TerrainRegion {
 
   randomize(seed?: number, options?: TerrainRandomizeOptions): this;
   randomize(options?: TerrainRandomizeOptions): this;
-  erode(options?: TerrainErosionOptions): this;
   level(height?: number): this;
 
   setWaterEnabled(enabled: boolean): this;
@@ -276,24 +215,6 @@ export class TerrainRegion {
   setTextureDensity(density: number): this;
   setRegionSize(size: number): this;
   rebuildTerrainGeometry(): this;
-  /** Set render-only mesh subdivisions between editable height samples. Rebuilds terrain/water geometry. */
-  setRenderSubdivisions(subdivisions: number): this;
-  /** Set render-only quality preset. Rebuilds terrain/water geometry if subdivision count changes. */
-  setTerrainQuality(quality: TerrainQuality): this;
-  /** Set render-only procedural terrain displacement strength. Does not change heightMap. */
-  setTerrainDetailStrength(strength: number): this;
-  /** Set render-only cliff/fracture displacement strength. Does not change heightMap. */
-  setTerrainCliffStrength(strength: number): this;
-  /** Set per-layer render-only micro displacement multiplier. Does not change heightMap. */
-  setTerrainMicroDetailStrength(strength: number): this;
-  /** Set procedural biome/moisture mask variation. */
-  setBiomeVariation(variation: number): this;
-  /** Set render-only shoreline shelf shaping strength. Does not change heightMap. */
-  setShorelineStrength(strength: number): this;
-  /** Set shader-side procedural terrain normal perturbation strength. */
-  setProceduralNormalStrength(strength: number): this;
-  setHexTileRate(rate: number): this;
-  setHexTileContrast(contrast: number): this;
   setTextureHeights(heights: Partial<TextureHeights>): this;
   syncTextureHeightUniforms(): this;
   /** Scale blended terrain normal maps at runtime. */
@@ -324,15 +245,6 @@ export class TerrainRegion {
   setTriplanarEnabled(enabled: boolean): this;
   /** Toggle wet sand darkening and shininess near shoreline. */
   setWetSandEnabled(enabled: boolean): this;
-  /** Toggle sun-coupled snow sparkles. */
-  setSnowSparklesEnabled(enabled: boolean): this;
-  /** Toggle noise-perturbed layer transitions. */
-  setNoisePerturbEnabled(enabled: boolean): this;
-  /** Toggle geometry cavity AO from heightfield gradient. */
-  setCavityAOEnabled(enabled: boolean): this;
-  /** Set moisture (0 = dry, 0.5 = normal, 1 = wet). Tints grass, shifts snow line. */
-  setMoisture(moisture: number): this;
-
   setBrushMode(mode: BrushMode): this;
   setBrushRadius(radius: number): this;
   setBrushStrength(strength: number): this;

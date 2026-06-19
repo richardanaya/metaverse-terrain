@@ -8,14 +8,6 @@ const canvas = document.querySelector('#scene');
 const heightStats = document.querySelector('#height-stats');
 const heightmapPreview = document.querySelector('#heightmap-preview');
 const regionSizeInput = document.querySelector('#region-size');
-const terrainQualityInput = document.querySelector('#terrain-quality');
-const renderSubdivisionsInput = document.querySelector('#render-subdivisions');
-const terrainDetailStrengthInput = document.querySelector('#terrain-detail-strength');
-const terrainCliffStrengthInput = document.querySelector('#terrain-cliff-strength');
-const terrainMicroDetailStrengthInput = document.querySelector('#terrain-micro-detail-strength');
-const shorelineStrengthInput = document.querySelector('#shoreline-strength');
-const erosionStrengthInput = document.querySelector('#erosion-strength');
-const erosionIterationsInput = document.querySelector('#erosion-iterations');
 const brushSizeInput = document.querySelector('#brush-size');
 const brushStrengthInput = document.querySelector('#brush-strength');
 const waterEnabledInput = document.querySelector('#water-enabled');
@@ -24,23 +16,12 @@ const layerSlider = document.querySelector('#layer-slider');
 const layerGradient = layerSlider.querySelector('.layer-slider-gradient');
 const layerHandles = [...layerSlider.querySelectorAll('.layer-handle')];
 const textureDensityInput = document.querySelector('#texture-density');
-const hexTileRateInput = document.querySelector('#hex-tile-rate');
-const hexTileContrastInput = document.querySelector('#hex-tile-contrast');
 const regionSizeValue = document.querySelector('#region-size-value');
-const renderSubdivisionsValue = document.querySelector('#render-subdivisions-value');
-const terrainDetailStrengthValue = document.querySelector('#terrain-detail-strength-value');
-const terrainCliffStrengthValue = document.querySelector('#terrain-cliff-strength-value');
-const terrainMicroDetailStrengthValue = document.querySelector('#terrain-micro-detail-strength-value');
-const shorelineStrengthValue = document.querySelector('#shoreline-strength-value');
-const erosionStrengthValue = document.querySelector('#erosion-strength-value');
-const erosionIterationsValue = document.querySelector('#erosion-iterations-value');
 const brushSizeValue = document.querySelector('#brush-size-value');
 const brushStrengthValue = document.querySelector('#brush-strength-value');
 const waterLevelValue = document.querySelector('#water-level-value');
 const waterLayerValue = document.querySelector('#water-layer-value');
 const textureDensityValue = document.querySelector('#texture-density-value');
-const hexTileRateValue = document.querySelector('#hex-tile-rate-value');
-const hexTileContrastValue = document.querySelector('#hex-tile-contrast-value');
 const terrainNormalIntensityInput = document.querySelector('#terrain-normal-intensity');
 const terrainNormalIntensityValue = document.querySelector('#terrain-normal-intensity-value');
 const terrainMetalIntensityInput = document.querySelector('#terrain-metal-intensity');
@@ -64,15 +45,6 @@ const waterDarknessInput = document.querySelector('#water-darkness');
 const waterDarknessValue = document.querySelector('#water-darkness-value');
 const triplanarEnabledInput = document.querySelector('#triplanar-enabled');
 const wetSandEnabledInput = document.querySelector('#wet-sand-enabled');
-const snowSparklesEnabledInput = document.querySelector('#snow-sparkles-enabled');
-const noisePerturbEnabledInput = document.querySelector('#noise-perturb-enabled');
-const cavityAOEnabledInput = document.querySelector('#cavity-ao-enabled');
-const moistureInput = document.querySelector('#moisture');
-const moistureValue = document.querySelector('#moisture-value');
-const biomeVariationInput = document.querySelector('#biome-variation');
-const biomeVariationValue = document.querySelector('#biome-variation-value');
-const proceduralNormalStrengthInput = document.querySelector('#procedural-normal-strength');
-const proceduralNormalStrengthValue = document.querySelector('#procedural-normal-strength-value');
 const modeButtons = [...document.querySelectorAll('[data-mode]')];
 
 const LAYER_ORDER = ['water', 'grass', 'rock', 'snow'];
@@ -147,14 +119,6 @@ async function init() {
   terrain = new TerrainRegion({
     seed: 29,
     regionSize: Number(regionSizeInput.value),
-    terrainQuality: terrainQualityInput.value,
-    renderSubdivisions: Number(renderSubdivisionsInput.value),
-    terrainDetailStrength: Number(terrainDetailStrengthInput.value),
-    terrainCliffStrength: Number(terrainCliffStrengthInput.value),
-    terrainMicroDetailStrength: Number(terrainMicroDetailStrengthInput.value),
-    biomeVariation: Number(biomeVariationInput.value),
-    shorelineStrength: Number(shorelineStrengthInput.value),
-    proceduralNormalStrength: Number(proceduralNormalStrengthInput.value),
     waterLevel: layerHeights.water,
     terrainAOIntensity: Number(terrainAOIntensityInput.value),
     terrainMetalIntensity: Number(terrainMetalIntensityInput.value),
@@ -196,41 +160,6 @@ function bindPanel() {
     return `${terrain.regionSize}m`;
   });
 
-  terrainQualityInput.addEventListener('change', () => {
-    terrain.setTerrainQuality(terrainQualityInput.value);
-    renderSubdivisionsInput.value = String(terrain.renderSubdivisions);
-    renderSubdivisionsValue.textContent = `${terrain.renderSubdivisions}x`;
-  });
-
-  bindRange(renderSubdivisionsInput, renderSubdivisionsValue, (value) => {
-    terrain.setRenderSubdivisions(value);
-    terrainQualityInput.value = terrain.terrainQuality;
-    return `${terrain.renderSubdivisions}x`;
-  });
-
-  bindRange(terrainDetailStrengthInput, terrainDetailStrengthValue, (value) => {
-    terrain.setTerrainDetailStrength(value);
-    return `${terrain.terrainDetailStrength.toFixed(2)}m`;
-  });
-
-  bindRange(terrainCliffStrengthInput, terrainCliffStrengthValue, (value) => {
-    terrain.setTerrainCliffStrength(value);
-    return terrain.terrainCliffStrength.toFixed(2);
-  });
-
-  bindRange(terrainMicroDetailStrengthInput, terrainMicroDetailStrengthValue, (value) => {
-    terrain.setTerrainMicroDetailStrength(value);
-    return terrain.terrainMicroDetailStrength.toFixed(2);
-  });
-
-  bindRange(shorelineStrengthInput, shorelineStrengthValue, (value) => {
-    terrain.setShorelineStrength(value);
-    return terrain.shorelineStrength.toFixed(2);
-  });
-
-  bindRange(erosionStrengthInput, erosionStrengthValue, (value) => value.toFixed(2));
-  bindRange(erosionIterationsInput, erosionIterationsValue, (value) => String(Math.round(value)));
-
   bindRange(brushSizeInput, brushSizeValue, (value) => {
     terrain.setBrushRadius(value);
     return `${terrain.brush.radius}m`;
@@ -257,16 +186,6 @@ function bindPanel() {
   bindRange(textureDensityInput, textureDensityValue, (value) => {
     terrain.setTextureDensity(value);
     return `${terrain.textureDensity}x`;
-  });
-
-  bindRange(hexTileRateInput, hexTileRateValue, (value) => {
-    terrain.setHexTileRate(value);
-    return `${terrain.hexTileRate.toFixed(2)}x`;
-  });
-
-  bindRange(hexTileContrastInput, hexTileContrastValue, (value) => {
-    terrain.setHexTileContrast(value);
-    return terrain.hexTileContrast.toFixed(2);
   });
 
   bindRange(terrainAOIntensityInput, terrainAOIntensityValue, (value) => {
@@ -323,40 +242,12 @@ function bindPanel() {
 
   triplanarEnabledInput.addEventListener('change', () => terrain.setTriplanarEnabled(triplanarEnabledInput.checked));
   wetSandEnabledInput.addEventListener('change', () => terrain.setWetSandEnabled(wetSandEnabledInput.checked));
-  snowSparklesEnabledInput.addEventListener('change', () => terrain.setSnowSparklesEnabled(snowSparklesEnabledInput.checked));
-  noisePerturbEnabledInput.addEventListener('change', () => terrain.setNoisePerturbEnabled(noisePerturbEnabledInput.checked));
-  cavityAOEnabledInput.addEventListener('change', () => terrain.setCavityAOEnabled(cavityAOEnabledInput.checked));
-
-  bindRange(moistureInput, moistureValue, (value) => {
-    terrain.setMoisture(value);
-    if (value < 0.2) return 'Arid';
-    if (value < 0.4) return 'Dry';
-    if (value < 0.6) return 'Normal';
-    if (value < 0.8) return 'Wet';
-    return 'Swampy';
-  });
-
-  bindRange(biomeVariationInput, biomeVariationValue, (value) => {
-    terrain.setBiomeVariation(value);
-    return terrain.biomeVariation.toFixed(2);
-  });
-
-  bindRange(proceduralNormalStrengthInput, proceduralNormalStrengthValue, (value) => {
-    terrain.setProceduralNormalStrength(value);
-    return terrain.proceduralNormalStrength.toFixed(2);
-  });
 
   modeButtons.forEach((button) => {
     button.addEventListener('click', () => setBrushMode(button.dataset.mode));
   });
 
   document.querySelector('#randomize').addEventListener('click', () => terrain.randomize());
-  document.querySelector('#erode-terrain').addEventListener('click', () => {
-    terrain.erode({
-      iterations: Number(erosionIterationsInput.value),
-      strength: Number(erosionStrengthInput.value),
-    });
-  });
   document.querySelector('#level').addEventListener('click', () => terrain.level(8));
   document.querySelector('#export-heightmap').addEventListener('click', () => terrain.downloadHeightmap());
 
