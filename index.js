@@ -745,6 +745,15 @@ function terrainTiledUv(baseUv, scale, layerScale = 1.0) {
   return baseUv.mul(scale).mul(layerScale);
 }
 
+// Wet-sand factor: a band confined to the exposed shore. It is strictly 0 at and
+// below the waterline (submerged sand is never wet), ramps in just above the
+// line, then fades back to 0 by uWetSandHeight above it.
+function wetSandFactorNode(height, u) {
+  const aboveWater = nodeSmoothstep(u.uWaterLevel, u.uWaterLevel.add(0.05), height);
+  const fade = float(1.0).sub(nodeSmoothstep(u.uWaterLevel.add(0.05), u.uWaterLevel.add(u.uWetSandHeight), height));
+  return aboveWater.mul(fade).mul(u.uWaterEnabled).mul(u.uWetSandEnabled);
+}
+
 function terrainAlbedoNode(baseUv, height, worldNormal, u) {
   const weights = terrainLayerWeightsNode(height, worldNormal, u);
   const sandColor = texture(u.uSand, terrainTiledUv(baseUv, u.uTextureScale, 1.15)).rgb;
@@ -752,8 +761,7 @@ function terrainAlbedoNode(baseUv, height, worldNormal, u) {
   const rockColor = texture(u.uRock, terrainTiledUv(baseUv, u.uTextureScale, 0.82)).rgb;
   const snowColor = texture(u.uSnow, terrainTiledUv(baseUv, u.uTextureScale, 0.66)).rgb;
   let albedo = sandColor.mul(weights.x).add(grassColor.mul(weights.y)).add(rockColor.mul(weights.z)).add(snowColor.mul(weights.w));
-  const wetness = float(1.0).sub(nodeSmoothstep(u.uWaterLevel.sub(0.25), u.uWaterLevel.add(u.uWetSandHeight), height))
-    .mul(u.uWaterEnabled).mul(u.uWetSandEnabled);
+  const wetness = wetSandFactorNode(height, u);
   albedo = mix(albedo, albedo.mul(0.55), wetness.mul(0.7));
   return albedo;
 }
@@ -858,8 +866,7 @@ function createTerrainMaterial(textureLoader, options) {
   const terrainHeight = positionLocal.y;
   const terrainNormal = normalWorld;
   const mrao = terrainMRAONode(terrainUv, terrainHeight, terrainNormal, u);
-  const wetness = float(1.0).sub(nodeSmoothstep(u.uWaterLevel.sub(0.25), u.uWaterLevel.add(u.uWetSandHeight), terrainHeight))
-    .mul(u.uWaterEnabled).mul(u.uWetSandEnabled);
+  const wetness = wetSandFactorNode(terrainHeight, u);
 
   material.colorNode = terrainAlbedoNode(terrainUv, terrainHeight, terrainNormal, u);
   material.roughnessNode = mix(nodeClamp(mrao.g.mul(u.uTerrainRoughnessIntensity), 0.04, 1.0), nodeClamp(float(0.08).mul(u.uTerrainRoughnessIntensity), 0.04, 1.0), wetness.mul(0.7));
@@ -880,22 +887,31 @@ function rotate2(v, angle) {
   return vec2(c.mul(v.x).sub(s.mul(v.y)), s.mul(v.x).add(c.mul(v.y)));
 }
 
-function sampleWaterPatternNode(worldXZ, time, uWaterMap) {
+// `windDir` is the normalized wind direction (world XZ); `windScale` scales the
+// scroll speed with wind strength. The texture scroll is aligned to the wind so
+// the surface visibly drifts downwind. Each octave rotates the wind flow by the
+// same angle as its UV so all layers travel the same world direction.
+function sampleWaterPatternNode(worldXZ, time, uWaterMap, windDir, windScale) {
   const baseUv = worldXZ.mul(0.012);
-  const warpA = luminanceNode(texture(uWaterMap, baseUv.mul(0.42).add(vec2(time.mul(0.006), time.mul(-0.004)))).rgb).sub(0.5);
-  const warpB = luminanceNode(texture(uWaterMap, rotate2(baseUv.mul(0.31), 1.7).add(vec2(time.mul(-0.003), time.mul(0.005)))).rgb).sub(0.5);
+  const flow = windDir.mul(time).mul(windScale);
+  const warpA = luminanceNode(texture(uWaterMap, baseUv.mul(0.42).add(flow.mul(0.006))).rgb).sub(0.5);
+  const warpB = luminanceNode(texture(uWaterMap, rotate2(baseUv.mul(0.31), 1.7).add(rotate2(flow, 1.7).mul(0.005))).rgb).sub(0.5);
   const warp = vec2(warpA, warpB).mul(0.18);
-  const a = texture(uWaterMap, rotate2(baseUv.mul(2.15).add(warp), 0.36).add(vec2(time.mul(0.012), time.mul(-0.007)))).rgb;
-  const b = texture(uWaterMap, rotate2(baseUv.mul(3.70).sub(warp.mul(0.65)), -0.92).add(vec2(time.mul(-0.006), time.mul(0.010)))).rgb;
-  const c = texture(uWaterMap, rotate2(baseUv.mul(6.40).add(warp.mul(0.35)), 2.21).add(vec2(time.mul(0.003), time.mul(0.004)))).rgb;
+  const a = texture(uWaterMap, rotate2(baseUv.mul(2.15).add(warp), 0.36).add(rotate2(flow, 0.36).mul(0.012))).rgb;
+  const b = texture(uWaterMap, rotate2(baseUv.mul(3.70).sub(warp.mul(0.65)), -0.92).add(rotate2(flow, -0.92).mul(0.010))).rgb;
+  const c = texture(uWaterMap, rotate2(baseUv.mul(6.40).add(warp.mul(0.35)), 2.21).add(rotate2(flow, 2.21).mul(0.007))).rgb;
   return a.mul(0.48).add(b.mul(0.34)).add(c.mul(0.18));
 }
 
-function waterRippleSignalNode(worldXZ, time) {
-  const w1 = sin(dot(worldXZ, vec2(0.87, 0.39)).mul(0.58).add(time.mul(1.70)));
-  const w2 = sin(dot(worldXZ, vec2(-0.34, 0.94)).mul(0.73).add(time.mul(1.13)));
-  const w3 = sin(dot(worldXZ.add(vec2(w1, w2).mul(0.7)), vec2(0.62, -0.78)).mul(1.05).add(time.mul(2.05)));
-  const w4 = sin(dot(worldXZ, vec2(0.14, 0.99)).mul(0.31).sub(time.mul(0.82)));
+// Ripples propagate along the wind direction (with small per-octave fan-out) and
+// advance in time at a rate that scales with wind speed.
+function waterRippleSignalNode(worldXZ, time, windDir, windScale) {
+  const t = time.mul(windScale);
+  const d1 = windDir, d2 = rotate2(windDir, 0.42), d3 = rotate2(windDir, -0.55), d4 = rotate2(windDir, 0.16);
+  const w1 = sin(dot(worldXZ, d1).mul(0.58).add(t.mul(1.70)));
+  const w2 = sin(dot(worldXZ, d2).mul(0.73).add(t.mul(1.13)));
+  const w3 = sin(dot(worldXZ.add(vec2(w1, w2).mul(0.7)), d3).mul(1.05).add(t.mul(2.05)));
+  const w4 = sin(dot(worldXZ, d4).mul(0.31).add(t.mul(0.82)));
   return w1.mul(0.34).add(w2.mul(0.27)).add(w3.mul(0.25)).add(w4.mul(0.14));
 }
 
@@ -1031,11 +1047,13 @@ function createWaterMaterial(textureLoader, options) {
 
   const fragment = Fn(() => {
     const worldXZ = positionWorld.xz;
-    const waterSample = sampleWaterPatternNode(worldXZ, u.uTime, u.uWaterMap);
+    const windDir = normalize(u.uWindDirection);
+    const windScale = u.uWindSpeed.div(5.0);
+    const waterSample = sampleWaterPatternNode(worldXZ, u.uTime, u.uWaterMap, windDir, windScale);
     const waterDetail = luminanceNode(waterSample);
-    const waterDetailX = luminanceNode(sampleWaterPatternNode(worldXZ.add(vec2(0.22, 0.0)), u.uTime, u.uWaterMap));
-    const waterDetailY = luminanceNode(sampleWaterPatternNode(worldXZ.add(vec2(0.0, 0.22)), u.uTime, u.uWaterMap));
-    const mapNormal = texture(u.uWaterNormal, uv().mul(8.0).add(vec2(u.uTime.mul(0.008), u.uTime.mul(-0.005)))).rgb.mul(2.0).sub(1.0);
+    const waterDetailX = luminanceNode(sampleWaterPatternNode(worldXZ.add(vec2(0.22, 0.0)), u.uTime, u.uWaterMap, windDir, windScale));
+    const waterDetailY = luminanceNode(sampleWaterPatternNode(worldXZ.add(vec2(0.0, 0.22)), u.uTime, u.uWaterMap, windDir, windScale));
+    const mapNormal = texture(u.uWaterNormal, uv().mul(8.0).add(windDir.mul(u.uTime).mul(windScale).mul(0.008))).rgb.mul(2.0).sub(1.0);
     const normal = normalize(normalWorld.add(vec3(mapNormal.x.mul(0.22).add(waterDetail.sub(waterDetailX).mul(1.35)), mapNormal.z.mul(0.18), mapNormal.y.mul(0.22).add(waterDetail.sub(waterDetailY).mul(1.35)))));
     const viewDirection = normalize(cameraPosition.sub(positionWorld));
     const sunDir = normalize(u.uSunDirection);
@@ -1053,8 +1071,8 @@ function createWaterMaterial(textureLoader, options) {
     let baseColor = mix(seabedColor, mix(waterEffectiveShallowNode(u), waterEffectiveDeepNode(u), spectralAbsorption), u.uRefractionEnabled.greaterThan(0.5).select(spectralAbsorption, float(1.0)));
     baseColor = mix(baseColor, waterSample, mix(0.16, 0.055, spectralAbsorption));
     baseColor = baseColor.mul(mix(1.08, 0.64, spectralAbsorption)).mul(mix(0.52, 1.0, daylight));
-    const ripple = waterRippleSignalNode(worldXZ, u.uTime);
-    const rippleFine = waterRippleSignalNode(worldXZ.mul(1.73).add(vec2(19.0, -31.0)), u.uTime.mul(1.19));
+    const ripple = waterRippleSignalNode(worldXZ, u.uTime, windDir, windScale);
+    const rippleFine = waterRippleSignalNode(worldXZ.mul(1.73).add(vec2(19.0, -31.0)), u.uTime.mul(1.19), windDir, windScale);
     const rippleCrest = nodeSmoothstep(0.42, 1.0, ripple.mul(0.62).add(rippleFine.mul(0.38)));
     baseColor = baseColor.add(ripple.mul(mix(0.025, 0.010, spectralAbsorption)));
     const nDotV = max(dot(normal, viewDirection), 0.001);
