@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 export const DEFAULT_HDRI_URL = 'https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr';
@@ -19,28 +19,20 @@ export async function setupPBREnvironment(scene, renderer, options = {}) {
     scene.background = new THREE.Color(backgroundColor);
   }
 
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  pmrem.compileEquirectangularShader();
-
   try {
     const hdrTexture = await new RGBELoader().loadAsync(hdriUrl);
-    const environment = pmrem.fromEquirectangular(hdrTexture).texture;
+    // WebGPURenderer consumes equirectangular environment textures directly.
+    // Avoid PMREMGenerator here: it is tied to the classic WebGL renderer path.
+    hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
 
-    scene.environment = environment;
+    scene.environment = hdrTexture;
     if (background) {
-      scene.background = environment;
+      scene.background = hdrTexture;
     }
 
-    // Keep the raw equirectangular HDR texture for custom ShaderMaterials.
-    // PMREM's `.texture` is a 2D DataTexture with CubeUV layout — wrong for
-    // `samplerCube`. Sampling the equirect directly with `sampler2D` + equirect
-    // UV mapping is version-robust and needs no extensions. The caller owns
-    // the texture's lifetime (it must outlive the TerrainRegion that uses it).
-    return { environment, envMap: hdrTexture };
+    return { environment: hdrTexture, envMap: hdrTexture };
   } catch (error) {
     console.warn('Failed to load HDRI environment map.', error);
     return { environment: null, envMap: null };
-  } finally {
-    pmrem.dispose();
   }
 }

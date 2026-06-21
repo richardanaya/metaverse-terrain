@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TerrainRegion, bindTerrainPainting, bindTextureDrop, loadPBRTextureSet } from 'metaverse-terrain';
 import { setupPBREnvironment } from '../shared/environment.js';
@@ -77,11 +77,12 @@ scene.fog = new THREE.Fog(0xb8c4d8, 360, 720);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 900);
 camera.position.set(132, 108, 168);
 
-const renderer = new THREE.WebGLRenderer({
+const renderer = new THREE.WebGPURenderer({
   canvas,
   antialias: true,
   powerPreference: 'high-performance',
 });
+await renderer.init();
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = shadowsEnabledInput.checked || castShadowsEnabledInput.checked;

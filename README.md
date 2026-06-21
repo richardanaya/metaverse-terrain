@@ -5,7 +5,7 @@
 
 Three.js terrain library with PBR texture blending, animated water, and heightmap brush editing.
 
-`TerrainRegion` owns the terrain mesh, shaders, and height data. Your app owns the scene graph, camera, input, and raycasting.
+`TerrainRegion` owns the terrain mesh, TSL node materials, and height data. Your app owns the scene graph, camera, input, and raycasting.
 
 ## Install
 
@@ -15,7 +15,7 @@ Three.js terrain library with PBR texture blending, animated water, and heightma
 npm install metaverse-terrain three
 ```
 
-Requires `three` >= 0.160 as a peer dependency. Use with Vite, Webpack, or any bundler — no import map needed.
+Requires `three` >= 0.160 as a peer dependency. The runtime uses Three.js Shading Language (TSL), so host apps must use `WebGPURenderer` from `three/webgpu` (with Three's WebGL fallback where available). Use with Vite, Webpack, or any bundler — no import map needed.
 
 **jsDelivr**
 
@@ -36,6 +36,8 @@ Browsers cannot resolve bare imports like `'metaverse-terrain'` on their own. Ad
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
+          "three/webgpu": "https://cdn.jsdelivr.net/npm/three/build/three.webgpu.js",
+          "three/tsl": "https://cdn.jsdelivr.net/npm/three/build/three.tsl.js",
           "metaverse-terrain": "https://cdn.jsdelivr.net/npm/metaverse-terrain/index.js"
         }
       }
@@ -43,7 +45,7 @@ Browsers cannot resolve bare imports like `'metaverse-terrain'` on their own. Ad
   </head>
   <body>
     <script type="module">
-      import * as THREE from 'three';
+      import * as THREE from 'three/webgpu';
       import { TerrainRegion } from 'metaverse-terrain';
 
       // your app here
@@ -124,7 +126,7 @@ const region = new TerrainRegion({
 });
 ```
 
-For best results, set `scene.environment` from an HDRI (image-based lighting). The bundled examples load a Venice sunset HDR via Three.js `RGBELoader` and `PMREMGenerator`. PBR terrain integrates with Three.js `MeshStandardMaterial`; water uses a custom shader with fresnel, specular, and normal detail. Disable PBR water at runtime with `region.setPBREnabled(false)` on low-end devices.
+For best results with `WebGPURenderer`, set `scene.environment` from an equirectangular HDRI (`texture.mapping = THREE.EquirectangularReflectionMapping`). The bundled examples load a Venice sunset HDR via Three.js `RGBELoader`. PBR terrain uses `MeshStandardNodeMaterial`; water uses a TSL `MeshBasicNodeMaterial` with fresnel, specular/glint, wave, foam, and normal detail. Disable PBR water at runtime with `region.setPBREnabled(false)` on low-end devices.
 
 ### Minimal example
 
@@ -137,6 +139,8 @@ For best results, set `scene.environment` from an HDRI (image-based lighting). T
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
+          "three/webgpu": "https://cdn.jsdelivr.net/npm/three/build/three.webgpu.js",
+          "three/tsl": "https://cdn.jsdelivr.net/npm/three/build/three.tsl.js",
           "metaverse-terrain": "https://cdn.jsdelivr.net/npm/metaverse-terrain/index.js"
         }
       }
@@ -145,7 +149,7 @@ For best results, set `scene.environment` from an HDRI (image-based lighting). T
   </head>
   <body>
     <script type="module">
-      import * as THREE from 'three';
+      import * as THREE from 'three/webgpu';
       import { TerrainRegion } from 'metaverse-terrain';
 
       const TEXTURE_BASE = 'https://cdn.jsdelivr.net/npm/metaverse-terrain/texture';
@@ -157,7 +161,8 @@ For best results, set `scene.environment` from an HDRI (image-based lighting). T
         water: `${TEXTURE_BASE}/terrain-water.png`,
       };
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      const renderer = new THREE.WebGPURenderer({ antialias: true });
+      await renderer.init();
       renderer.setSize(innerWidth, innerHeight);
       document.body.appendChild(renderer.domElement);
 
@@ -258,7 +263,7 @@ bindTextureDrop(region); // needs [data-texture-drop="grass"] elements in HTML
 ## Using with npm
 
 ```js
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { TerrainRegion, loadPBRTextureSet } from 'metaverse-terrain';
 import sand from 'metaverse-terrain/texture/terrain-sand.png';
 import grass from 'metaverse-terrain/texture/terrain-grass.png';

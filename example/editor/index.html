@@ -9,6 +9,8 @@
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three/build/three.module.js",
+          "three/webgpu": "https://cdn.jsdelivr.net/npm/three/build/three.webgpu.js",
+          "three/tsl": "https://cdn.jsdelivr.net/npm/three/build/three.tsl.js",
           "three/addons/": "https://cdn.jsdelivr.net/npm/three/examples/jsm/",
           "metaverse-terrain": "../../index.js"
         }
@@ -109,7 +111,7 @@
               <span>Receive Shadows</span>
             </label>
             <label class="toggle-label" for="cast-shadows-enabled">
-              <input id="cast-shadows-enabled" type="checkbox" />
+              <input id="cast-shadows-enabled" type="checkbox" checked />
               <span>Cast Shadows</span>
             </label>
           </div>

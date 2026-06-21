@@ -1,6 +1,6 @@
 {
   "name": "metaverse-terrain",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "ES module Three.js terrain heightfield with PBR texture blending, animated water, and brush editing",
   "type": "module",
   "sideEffects": false,
@@ -40,7 +40,9 @@
     "terrain",
     "heightmap",
     "metaverse",
+    "webgpu",
     "webgl",
+    "tsl",
     "shader",
     "pbr",
     "normal-map"

@@ -128,7 +128,7 @@ export interface TerrainRegionOptions {
   wetSandHeight?: number;
   /** Enable terrain shadow receiving. Default true. */
   shadowsEnabled?: boolean;
-  /** Enable terrain shadow casting. Default false. */
+  /** Enable terrain shadow casting. Default true. */
   castShadowsEnabled?: boolean;
 }
 
